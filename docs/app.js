@@ -32,11 +32,14 @@
     showSaved();
     scheduleSync();
   }
+  function defaultSettings() {
+    return { owner: 'alenasivakovan-art', repo: 'brand-manager-data', token: '', path: 'state.json' };
+  }
   function loadSettings() {
     try {
       var raw = localStorage.getItem(SETTINGS_KEY);
-      return raw ? JSON.parse(raw) : { owner: '', repo: '', token: '', path: 'data/state.json' };
-    } catch (e) { return { owner: '', repo: '', token: '', path: 'data/state.json' }; }
+      return raw ? JSON.parse(raw) : defaultSettings();
+    } catch (e) { return defaultSettings(); }
   }
   function saveSettings(s) {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch (e) {}
@@ -76,10 +79,15 @@
   }
 
   // ---------- checklist progress ----------
+  function sectionCheckItems(sec) {
+    var out = [];
+    sec.blocks.forEach(function (b) { if (b.type === 'check') out = out.concat(b.items); });
+    return out;
+  }
   function checklistTotals() {
     var total = 0, done = 0;
     DATA.checklistSections.forEach(function (sec) {
-      sec.items.forEach(function (it) {
+      sectionCheckItems(sec).forEach(function (it) {
         total++;
         if (STATE.checklistDone[it.id]) done++;
       });
@@ -87,9 +95,36 @@
     return { total: total, done: done, pct: total ? Math.round(done / total * 100) : 0 };
   }
   function sectionTotals(sec) {
-    var total = sec.items.length, done = 0;
-    sec.items.forEach(function (it) { if (STATE.checklistDone[it.id]) done++; });
+    var items = sectionCheckItems(sec);
+    var total = items.length, done = 0;
+    items.forEach(function (it) { if (STATE.checklistDone[it.id]) done++; });
     return { total: total, done: done, pct: total ? Math.round(done / total * 100) : 0 };
+  }
+  function mdInline(s) {
+    return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  }
+  function renderTableBlock(b) {
+    return '<div class="table-wrap"><table class="data-table"><thead><tr>' +
+      b.headers.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      b.rows.map(function (r) { return '<tr>' + r.map(function (c) { return '<td>' + mdInline(c) + '</td>'; }).join(''); }).join('') +
+      '</tbody></table></div>';
+  }
+  function renderSectionBlock(block, filter) {
+    switch (block.type) {
+      case 'subhead': return '<h4 style="margin-top:14px;">' + esc(block.text) + '</h4>';
+      case 'text': return '<p class="lede" style="margin-top:6px;">' + mdInline(block.text) + '</p>';
+      case 'bullets': return '<ul style="margin:8px 0 0;padding-left:20px;">' + block.items.map(function (t) { return '<li style="margin-bottom:6px;">' + mdInline(t) + '</li>'; }).join('') + '</ul>';
+      case 'numbered': return '<ol style="margin:8px 0 0;padding-left:20px;">' + block.items.map(function (t) { return '<li style="margin-bottom:6px;">' + mdInline(t) + '</li>'; }).join('') + '</ol>';
+      case 'table': return renderTableBlock(block);
+      case 'check':
+        var items = block.items.filter(function (it) { return !filter || it.label.toLowerCase().indexOf(filter) > -1; });
+        if (!items.length) return '';
+        return '<ul class="checklist" style="margin-top:8px;">' + items.map(function (it) {
+          var done = !!STATE.checklistDone[it.id];
+          return '<li class="' + (done ? 'done' : '') + '"><input type="checkbox" id="chk-' + it.id + '" data-id="' + it.id + '" ' + (done ? 'checked' : '') + '><label for="chk-' + it.id + '">' + mdInline(it.label) + '</label></li>';
+        }).join('') + '</ul>';
+      default: return '';
+    }
   }
 
   // ---------- views ----------
@@ -128,20 +163,18 @@
   function renderChecklistSections(filter) {
     filter = (filter || '').toLowerCase();
     return DATA.checklistSections.map(function (sec) {
-      var items = sec.items.filter(function (it) { return !filter || it.label.toLowerCase().indexOf(filter) > -1; });
-      if (filter && !items.length) return '';
+      var checkItems = sectionCheckItems(sec);
+      if (filter && !checkItems.some(function (it) { return it.label.toLowerCase().indexOf(filter) > -1; })) return '';
       var st = sectionTotals(sec);
       var isOpen = openSections[sec.id] || !!filter;
-      var itemsHtml = items.map(function (it) {
-        var done = !!STATE.checklistDone[it.id];
-        return '<li class="' + (done ? 'done' : '') + '"><input type="checkbox" id="chk-' + it.id + '" data-id="' + it.id + '" ' + (done ? 'checked' : '') + '><label for="chk-' + it.id + '">' + esc(it.label) + '</label></li>';
-      }).join('');
+      var blocksHtml = sec.blocks.map(function (b) { return renderSectionBlock(b, filter); }).join('');
+      var pctLabel = st.total ? (st.done + '/' + st.total) : 'справка';
       return '<div class="section-block' + (isOpen ? ' open' : '') + '" data-section="' + sec.id + '">' +
         '<div class="section-head" data-toggle-section="' + sec.id + '">' +
           '<svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>' +
-          '<h3>' + esc(sec.title) + '</h3><span class="pct">' + st.done + '/' + st.total + '</span>' +
+          '<h3>' + esc(sec.title) + '</h3><span class="pct">' + pctLabel + '</span>' +
         '</div>' +
-        '<div class="section-items"><ul class="checklist">' + itemsHtml + '</ul></div>' +
+        '<div class="section-items">' + blocksHtml + '</div>' +
       '</div>';
     }).join('');
   }
@@ -151,9 +184,9 @@
     var t = checklistTotals();
     return '' +
       '<section class="view">' +
-        '<div><div class="eyebrow">Чек-лист</div><h1>Чек-лист бренд-менеджера</h1></div>' +
+        '<div><div class="eyebrow">Чек-лист</div><h1>Чек-лист бренд-менеджера</h1><p class="lede">' + esc(DATA.checklistIntro || '') + '</p></div>' +
         '<div class="progress-card"><div class="progress-top"><div class="progress-num mono">' + t.done + ' из ' + t.total + '</div><div class="mono" style="color:var(--ink-muted);font-size:14px;">' + t.pct + '% готово</div></div><div class="progress-bar"><div class="progress-fill" style="width:' + t.pct + '%"></div></div></div>' +
-        '<input class="search" id="checklist-search" type="text" placeholder="Найти пункт..." value="' + esc(filter) + '">' +
+        '<input class="search" id="checklist-search" type="text" placeholder="Найти пункт чек-листа..." value="' + esc(filter) + '">' +
         '<div id="sections-slot">' + renderChecklistSections(filter) + '</div>' +
       '</section>';
   }
@@ -683,6 +716,10 @@
 
     window.addEventListener('online', function () { setSyncStatus('idle'); scheduleSync(); });
     window.addEventListener('offline', function () { setSyncStatus('offline'); });
+    window.addEventListener('hashchange', function () {
+      var h = (location.hash || '').replace('#/', '');
+      if (VIEWS[h] && h !== currentView) { currentView = h; render(); }
+    });
 
     var initHash = (location.hash || '').replace('#/', '');
     if (VIEWS[initHash]) currentView = initHash;
