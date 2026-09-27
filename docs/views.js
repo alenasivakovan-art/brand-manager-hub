@@ -69,7 +69,7 @@
     }).join('');
     var loose = BM.projectsIn(null);
     return '' +
-      '<a class="logo" href="#/"><span class="logo-mark">' + icon('leaf') + '</span><span>Бренд-менеджер<small>студия запуска брендов</small></span></a>' +
+      '<a class="logo" href="#/"><span class="logo-mark">' + icon('sparkle') + '</span><span>Бренд-менеджер<small>студия запуска брендов</small></span></a>' +
       '<button type="button" class="search-trigger" data-action="cmdk">' + icon('search') + '<span class="st-label">Поиск и команды</span><span class="kbd">Ctrl K</span></button>' +
       btn('new-project', 'Новый проект', { cls: 'primary block', icon: 'plus' }) +
       '<nav class="nav-group" aria-label="Основная навигация">' +
@@ -124,7 +124,7 @@
 
     if (!ps.length) {
       return '<div class="page"><section class="bento">' + hero + focus + '</section>' +
-        empty('leaf', 'Здесь появятся ваши бренды', 'Создайте первый проект — внутри будет бренд-платформа, чек-лист из 64 шагов запуска, калькулятор юнит-экономики, задачи и заметки.',
+        empty('sparkle', 'Здесь появятся ваши бренды', 'Создайте первый проект — внутри будет бренд-платформа, чек-лист из 64 шагов запуска, калькулятор юнит-экономики, задачи и заметки.',
           btn('new-project', 'Создать бренд', { cls: 'primary', icon: 'plus' }) + btn('new-folder', 'Сначала папку', { icon: 'folderPlus' })) + '</div>';
     }
 
@@ -183,7 +183,7 @@
 
     var body = list.length ? '<div class="grid">' + list.map(projectCard).join('') + '</div>' :
       (s.projects.length && (ui.projQuery || ui.projStatus) ? empty('search', 'Ничего не нашлось', 'Попробуйте изменить запрос или сбросить фильтр статуса.', btn('reset-filters', 'Сбросить фильтры', { cls: 'soft' })) :
-        empty('leaf', folder ? 'В папке пока пусто' : 'Проектов пока нет', folder ? 'Создайте бренд прямо в этой папке или перенесите существующий через меню «⋯» на карточке.' : 'Каждый проект — отдельный бренд со своей платформой, чек-листом, продуктами и аналитикой.', btn('new-project', 'Новый проект', { cls: 'primary', icon: 'plus', data: { folder: folder ? folder.id : '' } })));
+        empty('sparkle', folder ? 'В папке пока пусто' : 'Проектов пока нет', folder ? 'Создайте бренд прямо в этой папке или перенесите существующий через меню «⋯» на карточке.' : 'Каждый проект — отдельный бренд со своей платформой, чек-листом, продуктами и аналитикой.', btn('new-project', 'Новый проект', { cls: 'primary', icon: 'plus', data: { folder: folder ? folder.id : '' } })));
 
     return '<div class="page">' +
       '<div class="page-head"><div>' + (folder ? '<nav class="crumbs" aria-label="Путь"><a href="#/projects">Проекты</a>' + icon('chevR', 'sm') + '<span>' + esc(folder.name) + '</span></nav>' : '<span class="eyebrow">' + icon('grid', 'sm') + 'Проекты</span>') +

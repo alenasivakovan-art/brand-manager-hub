@@ -360,7 +360,7 @@
     },
     'fab': function (el) {
       var p = currentProject();
-      var items = [{ text: 'Новый бренд', icon: 'leaf', run: function () { projectModal(null); } }, { text: 'Новая папка', icon: 'folderPlus', run: function () { folderModal(null); } }];
+      var items = [{ text: 'Новый бренд', icon: 'sparkle', run: function () { projectModal(null); } }, { text: 'Новая папка', icon: 'folderPlus', run: function () { folderModal(null); } }];
       if (p) items = [{ label: p.name }, { text: 'Задача', icon: 'tasks', run: function () { go('#/p/' + p.id + '/tasks'); setTimeout(function () { var i = document.getElementById('qt-t'); if (i) i.focus(); }, 60); } },
         { text: 'Заметка', icon: 'note', run: function () { A['new-note'](null, p); } }, { text: 'SKU', icon: 'box', run: function () { skuModal(p); } },
         { text: 'Неделя аналитики', icon: 'chart', run: function () { entryModal(p); } }, '-'].concat(items);
@@ -486,7 +486,7 @@
       { t: 'Настройки и синхронизация', i: 'sliders', run: function () { go('#/settings'); } },
       { t: BM.isDark() ? 'Светлая тема' : 'Тёмная тема', i: BM.isDark() ? 'sun' : 'moon', run: function () { A['toggle-theme'](); } }
     ].filter(function (x) { return match(x.t); });
-    var projects = BM.state.projects.filter(function (p) { return match(p.name + ' ' + p.category); }).slice(0, 6).map(function (p) { return { t: p.name, sub: BM.statusLabel(p.status), i: 'leaf', run: function () { go('#/p/' + p.id); } }; });
+    var projects = BM.state.projects.filter(function (p) { return match(p.name + ' ' + p.category); }).slice(0, 6).map(function (p) { return { t: p.name, sub: BM.statusLabel(p.status), i: 'sparkle', run: function () { go('#/p/' + p.id); } }; });
     var folders = BM.state.folders.filter(function (f) { return match(f.name); }).slice(0, 4).map(function (f) { return { t: f.name, sub: 'папка', i: 'folder', run: function () { go('#/projects/' + f.id); } }; });
     var tasks = [], notes = [];
     if (ql) {
