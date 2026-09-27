@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <path id="leaf" d="M0 -160 C95 -110 110 60 0 170 C-110 60 -95 -110 0 -160 Z"/>
+    <radialGradient id="light" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#F6F9F2" stop-opacity=".95"/>
+      <stop offset="1" stop-color="#F6F9F2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="#D4DFCA"/>
+  <g fill="#9DB68E">
+    <use href="#leaf" transform="translate(120 140) rotate(-35) scale(1.4)"/>
+    <use href="#leaf" transform="translate(1480 180) rotate(40) scale(1.6)"/>
+    <use href="#leaf" transform="translate(1380 860) rotate(-20) scale(1.5)"/>
+    <use href="#leaf" transform="translate(260 880) rotate(55) scale(1.3)"/>
+  </g>
+  <g fill="#7F9C70">
+    <use href="#leaf" transform="translate(-10 520) rotate(70) scale(1.5)"/>
+    <use href="#leaf" transform="translate(1600 540) rotate(-60) scale(1.3)"/>
+    <use href="#leaf" transform="translate(760 1040) rotate(10) scale(1.2)"/>
+    <use href="#leaf" transform="translate(900 -40) rotate(160) scale(1.1)"/>
+  </g>
+  <g fill="#B8CBA9">
+    <use href="#leaf" transform="translate(560 260) rotate(-70) scale(1.1)"/>
+    <use href="#leaf" transform="translate(1120 380) rotate(30) scale(1.2)"/>
+    <use href="#leaf" transform="translate(620 760) rotate(-15) scale(1)"/>
+    <use href="#leaf" transform="translate(1180 760) rotate(75) scale(.9)"/>
+  </g>
+  <g fill="#6B8960" opacity=".7">
+    <use href="#leaf" transform="translate(380 460) rotate(20) scale(.7)"/>
+    <use href="#leaf" transform="translate(1320 520) rotate(-45) scale(.75)"/>
+  </g>
+  <circle cx="820" cy="420" r="360" fill="url(#light)"/>
+  <circle cx="300" cy="300" r="220" fill="url(#light)" opacity=".7"/>
+  <circle cx="1250" cy="650" r="260" fill="url(#light)" opacity=".6"/>
+</svg>
