@@ -4,37 +4,54 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Бренд-менеджер</title>
-<meta name="description" content="Центр управления запуском бренда на маркетплейсе: чек-лист, аналитика, юнит-экономика. Работает офлайн.">
-<meta name="theme-color" content="#1F6F63">
+<meta name="description" content="Студия запуска брендов на маркетплейсах: папки и проекты, бренд-платформа, чек-лист запуска, юнит-экономика, аналитика, задачи и заметки. Работает офлайн.">
+<meta name="theme-color" content="#F3F5EF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101410" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Бренд">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="style.css">
+<script>
+  try { var t = JSON.parse(localStorage.getItem('bmh-settings-v1') || '{}').theme; if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+</script>
 </head>
 <body>
-<div id="shell">
-  <header class="topbar">
-    <div class="topbar-inner">
-      <span class="brand-title">Бренд-менеджер</span>
-      <span class="status-dot" id="status-dot" title="Синхронизировано"></span>
-      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Переключить тему">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+<a class="skip-link" href="#page">Перейти к содержимому</a>
+<div class="app">
+  <aside class="sidebar" id="sidebar" aria-label="Боковая панель"></aside>
+  <div class="main">
+    <header class="topbar">
+      <button type="button" class="icon-btn" data-action="open-drawer" aria-label="Открыть меню">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
       </button>
-    </div>
-    <nav class="tabs">
-      <button class="tab-btn" data-nav="dashboard">Дашборд</button>
-      <button class="tab-btn" data-nav="checklist">Чек-лист</button>
-      <button class="tab-btn" data-nav="process">Процессы</button>
-      <button class="tab-btn" data-nav="analytics">Аналитика</button>
-      <button class="tab-btn" data-nav="economics">Юнит-экономика</button>
-      <button class="tab-btn" data-nav="docs">Документы</button>
-      <button class="tab-btn" data-nav="settings">Настройки</button>
-    </nav>
-  </header>
-  <main class="wrap" id="app"></main>
-  <div class="savebar"><span id="save-toast">Сохранено</span></div>
+      <a class="logo" href="#/"><span class="logo-mark"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10z"/><path d="M2 21c0-3 1.9-5.4 5.1-6"/></svg></span>Бренд-менеджер</a>
+      <button type="button" class="icon-btn" data-action="cmdk" aria-label="Поиск">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      </button>
+    </header>
+    <main id="page" tabindex="-1"></main>
+  </div>
 </div>
+
+<nav class="bottom-nav" aria-label="Нижняя навигация">
+  <a class="bn-item" href="#/" data-route="home"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a2 2 0 0 1-2 2h-4v-7h-6v7H5a2 2 0 0 1-2-2z"/></svg>Главная</a>
+  <a class="bn-item" href="#/projects" data-route="projects"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>Проекты</a>
+  <button type="button" class="bn-fab" data-action="fab" aria-label="Создать"><svg class="i lg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+  <a class="bn-item" href="#/kb" data-route="kb"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>Знания</a>
+  <a class="bn-item" href="#/settings" data-route="settings"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>Настройки</a>
+</nav>
+
+<dialog class="modal" id="modal"></dialog>
+<dialog class="cmdk" id="cmdk" aria-label="Поиск и команды"></dialog>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
 <script src="data.js"></script>
-<script src="app.js"></script>
+<script src="core.js"></script>
+<script src="views.js"></script>
+<script src="main.js"></script>
 </body>
 </html>

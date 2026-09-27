@@ -1,12 +1,12 @@
 {
-  "name": "Бренд-менеджер",
+  "name": "Бренд-менеджер — студия запуска брендов",
   "short_name": "Бренд",
-  "description": "Чек-лист, процессы, аналитика маркетплейсов и юнит-экономика запуска бренда. Работает офлайн.",
+  "description": "Папки и проекты брендов, бренд-платформа, чек-лист запуска, юнит-экономика, аналитика маркетплейсов, задачи и заметки. Работает офлайн.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#EEF1EE",
-  "theme_color": "#1F6F63",
+  "background_color": "#F3F5EF",
+  "theme_color": "#F3F5EF",
   "lang": "ru",
   "icons": [
     { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
