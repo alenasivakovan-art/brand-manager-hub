@@ -99,7 +99,7 @@ body {
 body::before {
   content: ""; position: fixed; inset: -6%; z-index: -1; pointer-events: none;
   background: url("bg-leaves.svg") center / cover no-repeat;
-  filter: blur(34px) saturate(1.1);
+  filter: blur(18px) saturate(1.1);
   opacity: var(--art-opacity);
 }
 h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.02em; text-wrap: balance; color: var(--ink); }
