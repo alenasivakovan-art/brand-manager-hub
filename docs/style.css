@@ -2,20 +2,21 @@
 
 /* ---------- tokens ---------- */
 :root {
-  --bg: #DCE5D3;
-  --glow-1: rgba(255, 255, 255, .55);
-  --glow-2: rgba(190, 208, 176, .7);
-  --surface: rgba(255, 255, 255, .56);
-  --surface-2: rgba(255, 255, 255, .42);
-  --surface-3: rgba(62, 84, 55, .08);
-  --surface-strong: rgba(255, 255, 255, .86);
-  --overlay: rgba(246, 250, 243, .9);
-  --glass: rgba(244, 248, 240, .52);
-  --glass-border: rgba(255, 255, 255, .72);
-  --glass-blur: blur(22px) saturate(1.6);
-  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, .85), 0 14px 36px -20px rgba(47, 68, 40, .35);
-  --tint: rgba(206, 222, 194, .55);
-  --art-opacity: .85;
+  --bg: #E3E8DF;
+  --glow-1: rgba(255, 255, 255, .6);
+  --glow-2: rgba(206, 214, 200, .6);
+  --surface: rgba(255, 255, 255, .3);
+  --surface-2: rgba(255, 255, 255, .22);
+  --surface-3: rgba(62, 84, 55, .07);
+  --surface-strong: rgba(255, 255, 255, .55);
+  --overlay: rgba(244, 247, 241, .82);
+  --glass: rgba(242, 245, 239, .34);
+  --glass-border: rgba(255, 255, 255, .55);
+  --glass-blur: blur(40px) saturate(.9) brightness(1.04);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), 0 12px 32px -22px rgba(47, 60, 42, .28);
+  --tint: rgba(214, 224, 206, .38);
+  --art-opacity: .6;
+  --art-filter: blur(18px) saturate(.5);
   --line: rgba(62, 84, 55, .13);
   --line-strong: rgba(62, 84, 55, .24);
   --ink: #1B2419;
@@ -99,7 +100,7 @@ body {
 body::before {
   content: ""; position: fixed; inset: -6%; z-index: -1; pointer-events: none;
   background: url("bg-leaves.svg") center / cover no-repeat;
-  filter: blur(18px) saturate(1.1);
+  filter: var(--art-filter);
   opacity: var(--art-opacity);
 }
 h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.02em; text-wrap: balance; color: var(--ink); }
@@ -559,7 +560,7 @@ dialog.cmdk::backdrop { background: rgba(16, 22, 15, .4); backdrop-filter: blur(
 .clickable:hover { box-shadow: var(--glass-shadow), var(--sh-2); border-color: var(--glass-border); background: var(--surface-strong); }
 .table-wrap { background: var(--surface-2); border-color: var(--line); }
 .empty { background: var(--surface-2); border-color: var(--line-strong); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); }
-.hero { background: linear-gradient(135deg, rgba(255, 255, 255, .78) 0%, rgba(255, 255, 255, .42) 55%, rgba(247, 232, 224, .5) 120%); }
+.hero { background: linear-gradient(135deg, rgba(255, 255, 255, .5) 0%, rgba(255, 255, 255, .2) 55%, rgba(247, 236, 230, .3) 120%); }
 .card.tint { background: linear-gradient(160deg, var(--tint), var(--surface) 72%); }
 .statement, .preview-box { background: var(--tint); }
 .preview-box { border-color: var(--glass-border); }

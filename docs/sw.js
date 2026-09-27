@@ -1,4 +1,4 @@
-var CACHE_NAME = 'bmh-cache-v3';
+var CACHE_NAME = 'bmh-cache-v4';
 var APP_SHELL = ['./', './index.html', './style.css', './data.js', './core.js', './views.js', './main.js', './manifest.webmanifest', './icons/icon.svg', './bg-leaves.svg'];
 
 self.addEventListener('install', function (event) {
