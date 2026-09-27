@@ -606,6 +606,7 @@ dialog.cmdk::backdrop { background: rgba(16, 22, 15, .4); backdrop-filter: blur(
 .search-trigger:hover { background: var(--surface-strong); border-color: var(--glass-border); }
 .input, .select, .textarea { background: var(--surface-2); border-color: var(--glass-border); box-shadow: inset 0 1px 2px rgba(38, 42, 36, .05); }
 .input:focus, .select:focus, .textarea:focus { background: var(--surface-strong); }
+.quick-add .input[name="title"] { background: transparent; border-color: transparent; box-shadow: none; }
 .cbox, .swatch button { background: var(--surface-strong); }
 .cbox:checked { background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 78%, #fff), var(--primary)); }
 .progress { background: var(--line); }

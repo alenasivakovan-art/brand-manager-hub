@@ -46,6 +46,10 @@
     updateBottomNav();
 
     if (route.name === 'kb' && route.tab === 'process') renderMermaid();
+    var tabsBar = document.querySelector('#page .tabs'), activeTab = tabsBar && tabsBar.querySelector('.tab.active');
+    if (activeTab && (activeTab.offsetLeft < tabsBar.scrollLeft || activeTab.offsetLeft + activeTab.offsetWidth > tabsBar.scrollLeft + tabsBar.clientWidth)) {
+      tabsBar.scrollLeft = activeTab.offsetLeft - (tabsBar.clientWidth - activeTab.offsetWidth) / 2;
+    }
     if (routeChanged) {
       window.scrollTo(0, 0);
       var h1 = document.querySelector('#page h1');
