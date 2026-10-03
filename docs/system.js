@@ -238,8 +238,8 @@
         if (f.d >= 5) return;
         edges.forEach(function (e) {
           if (e.from !== f.id || e.to === start) return;
-          var delta = f.v * e.sign * (e.w / 3) * 0.72;
-          if (Math.abs(delta) < 0.035) return;
+          var delta = f.v * e.sign * (e.w / 3) * 0.5;
+          if (Math.abs(delta) < 0.02) return;
           eff[e.to] = (eff[e.to] || 0) + delta;
           if (used[e.i] == null || used[e.i] > f.d) used[e.i] = f.d;
           next.push({ id: e.to, v: delta, d: f.d + 1 });
