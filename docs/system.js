@@ -365,7 +365,8 @@
     var LC = [0, 1, 2, 3, 4].map(function (i) { return hexRgb(rootCs.getPropertyValue('--c-l' + i).trim() || '#8FA780'); });
     function hexRgb(h) { h = h.replace('#', ''); if (h.length === 3) h = h.replace(/./g, '$&$&'); var n = parseInt(h, 16); return ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255); }
 
-    var dpr = 1, W = 0, H = 0, fitK = 1, view = ui.sysView || null, anim = null;
+    var dpr = 1, W = 0, H = 0, fitK = 1, view = ui.sysView || null, anim = null, userMoved = !!ui.sysMoved;
+    function markMoved(v) { userMoved = v; ui.sysMoved = v; }
     var hoverId = null, pathSel = null, lastSim = null, pulses = [], lastAmb = 0, nextCycle = 0;
 
     // ----- view transform -----
@@ -384,6 +385,7 @@
       requestDraw();
     }
     function zoomAt(f, sx, sy, animate) {
+      markMoved(true);
       var k = clamp(view.k * f, fitK * 0.35, fitK * 6);
       f = k / view.k;
       setView({ k: k, x: sx - (sx - view.x) * f, y: sy - (sy - view.y) * f }, animate);
@@ -406,7 +408,7 @@
       W = r.width; H = r.height;
       cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
       var f = fitView();
-      if (!view) setView(f, false); else showZoom();
+      if (!view || !userMoved) setView(f, false); else showZoom();
       requestDraw();
     }
 
@@ -558,7 +560,7 @@
         if (!(showAll || n.layer === 4 || st.on || st.sel) || (focus && st.dim && !showAll)) { ctx.globalAlpha = 1; return; }
         var dx = n.x - CORE.x, dy = n.y - (CORE.y - 40), dl = Math.sqrt(dx * dx + dy * dy) || 1, ux = dx / dl, uy = dy / dl;
         var lx, ly, al, bl;
-        if (n.layer === 4) { lx = sx; ly = sy + rs + 9; al = 'center'; bl = 'top'; }
+        if (n.layer === 4) { lx = sx + (n.x < 0 ? -1 : 1) * (rs + 8); ly = sy; al = n.x < 0 ? 'right' : 'left'; bl = 'middle'; }
         else {
           lx = sx + ux * (rs + 7); ly = sy + uy * (rs + 7);
           al = ux < -0.3 ? 'right' : ux > 0.3 ? 'left' : 'center';
@@ -681,8 +683,10 @@
           PRESETS.map(function (x, i) { return '<button type="button" class="sys-preset" data-sys-preset="' + i + '"><b>' + esc(x.title) + '</b><small>' + esc(x.text) + '</small></button>'; }).join('') + '</div>';
       }
       var open = !!html;
+      var wasOpen = dock.classList.contains('open');
       dock.innerHTML = html;
       dock.classList.toggle('open', open);
+      if (wasOpen !== open && view && !userMoved) setView(fitView(), true);
       stage.classList.toggle('dock-open', open);
       stage.querySelectorAll('[data-sys-dock]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.sysDock === ui.sysDock && !ui.sysNode && !pathSel); });
       stage.querySelectorAll('.sys-hud [data-sys-mode]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.sysMode === ui.sysMode); });
@@ -737,13 +741,14 @@
         var d = Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y), mx = (ps[0].x + ps[1].x) / 2, my = (ps[0].y + ps[1].y) / 2;
         var k = clamp(pinch.k * d / (pinch.d || 1), fitK * 0.35, fitK * 6);
         var wx = (pinch.cx - pinch.vx) / pinch.k, wy = (pinch.cy - pinch.vy) / pinch.k;
+        markMoved(true);
         setView({ k: k, x: mx - wx * k, y: my - wy * k });
         return;
       }
       if (drag) {
         var dx = pt.x - drag.x, dy = pt.y - drag.y;
         if (!drag.moved && Math.hypot(dx, dy) > 5) { drag.moved = true; cv.classList.add('grabbing'); }
-        if (drag.moved) setView({ k: view.k, x: drag.vx + dx, y: drag.vy + dy });
+        if (drag.moved) { markMoved(true); setView({ k: view.k, x: drag.vx + dx, y: drag.vy + dy }); }
         return;
       }
       if (e.pointerType === 'mouse') {
@@ -778,7 +783,7 @@
       var step = 80;
       if (e.key === '+' || e.key === '=') zoomAt(1.25, W / 2, H / 2, true);
       else if (e.key === '-' || e.key === '_') zoomAt(0.8, W / 2, H / 2, true);
-      else if (e.key === '0') setView(fitView(), true);
+      else if (e.key === '0') { markMoved(false); setView(fitView(), true); }
       else if (e.key === 'ArrowLeft') setView({ k: view.k, x: view.x + step, y: view.y }, true);
       else if (e.key === 'ArrowRight') setView({ k: view.k, x: view.x - step, y: view.y }, true);
       else if (e.key === 'ArrowUp') setView({ k: view.k, x: view.x, y: view.y + step }, true);
@@ -812,7 +817,7 @@
         var z = t.dataset.sysZoom;
         if (z === 'in') zoomAt(1.35, (W - dockW()) / 2, H / 2, true);
         else if (z === 'out') zoomAt(1 / 1.35, (W - dockW()) / 2, H / 2, true);
-        else if (z === 'fit') setView(fitView(), true);
+        else if (z === 'fit') { markMoved(false); setView(fitView(), true); }
         else if (z === 'full') {
           if (document.fullscreenElement) document.exitFullscreen().catch(function () {});
           else stage.requestFullscreen().catch(function () { BM.toast('Браузер не разрешил полноэкранный режим'); });
@@ -848,6 +853,7 @@
     var lb = stage.querySelector('[data-sys-legend]'); if (lb) lb.setAttribute('aria-expanded', legendOn);
     if (!ui.sysNode && ui.sysDock === undefined) ui.sysDock = wide ? 'presets' : null;
     if (ui.sysNode) ui.sysDock = 'node';
+    renderDock();
     resize();
     refresh();
     var hint = stage.querySelector('#sys-hint'), seen = null;
