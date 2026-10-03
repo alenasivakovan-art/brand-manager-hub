@@ -509,11 +509,12 @@
       setView({ k: k, x: sx - (sx - view.x) * f, y: sy - (sy - view.y) * f }, animate);
     }
     function centerOn(n) {
-      var sx = view.x + n.x * view.k, sy = view.y + n.y * view.k, pad = 90;
+      var v0 = anim ? anim.to : view;
+      var sx = v0.x + n.x * v0.k, sy = v0.y + n.y * v0.k, pad = 90;
       var right = W - dockW();
       if (sx > pad && sx < right - pad && sy > pad + 60 && sy < H - pad - (W < 900 && dock.classList.contains('open') ? H * 0.5 : 0)) return;
       var cx = (right) / 2, cy = W < 900 && dock.classList.contains('open') ? H * 0.28 : H / 2;
-      setView({ k: view.k, x: cx - n.x * view.k, y: cy - n.y * view.k }, true);
+      setView({ k: v0.k, x: cx - n.x * v0.k, y: cy - n.y * v0.k }, true);
     }
     function showZoom() {
       var el = stage.querySelector('#sys-zoom-val');
@@ -660,12 +661,12 @@
       // nodes + labels in screen space
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       var p = ui.sysProject ? BM.project(ui.sysProject) : null;
-      var showAll = k / fitK >= 1.1;
+      var narrow = W < 900, showAll = k / fitK >= (narrow ? 1.8 : 1.1);
       NODES.forEach(function (n) {
         var st = nodeState(n);
         var sx = view.x + n.x * k, sy = view.y + n.y * k;
         if (sx < -200 || sx > W + 200 || sy < -100 || sy > H + 100) return;
-        var rs = n.r * clamp(Math.pow(k / fitK, 0.5), 0.75, 1.9) * (W < 600 ? 0.9 : 1);
+        var rs = n.r * clamp(Math.pow(k / fitK, 0.5), 0.75, 1.9) * (W < 600 ? 0.6 : 1);
         var breathe = reduce ? 0 : Math.sin(t * 2.2 + n.x * 0.01) * 0.5 + 0.5;
         var gc = st.eff != null ? (st.good ? C.good : C.bad) : LC[n.layer];
         var ga = st.dim ? 0.06 : st.sel ? 0.55 : st.eff != null ? 0.25 + Math.abs(st.eff) * 0.4 : (focus && st.on ? 0.4 : 0.22 + breathe * 0.08);
@@ -682,7 +683,7 @@
           ctx.strokeStyle = dark ? '#101410' : '#fff'; ctx.lineWidth = 1.5;
           ctx.beginPath(); ctx.arc(sx + rs * 0.85, sy - rs * 0.85, 3.6, 0, 6.283); ctx.fill(); ctx.stroke();
         }
-        if (!(showAll || n.layer === 0 || n.layer === 1 || n.layer === 4 || st.on || st.sel || n.id === hoverId) || (focus && st.dim && !showAll)) { ctx.globalAlpha = 1; return; }
+        if (!(showAll || (!narrow && (n.layer === 0 || n.layer === 1)) || n.layer === 4 || st.on || st.sel || n.id === hoverId) || (focus && st.dim && !showAll)) { ctx.globalAlpha = 1; return; }
         var dx = n.x - CORE.x, dy = n.y - (CORE.y - 40), dl = Math.sqrt(dx * dx + dy * dy) || 1, ux = dx / dl, uy = dy / dl;
         var lx, ly, al, bl;
         if (n.layer === 4) { lx = sx + (n.x < 0 ? -1 : 1) * (rs + 8); ly = sy; al = n.x < 0 ? 'right' : 'left'; bl = 'middle'; }
@@ -842,7 +843,7 @@
       var best = null, bd = 1e9;
       NODES.forEach(function (n) {
         var sx = view.x + n.x * view.k, sy = view.y + n.y * view.k;
-        var rs = n.r * clamp(Math.pow(view.k / fitK, 0.5), 0.75, 1.9) + 10;
+        var rs = n.r * clamp(Math.pow(view.k / fitK, 0.5), 0.75, 1.9) * (W < 600 ? 0.6 : 1) + (W < 600 ? 12 : 10);
         var d = Math.hypot(sx - x, sy - y);
         if (d < rs && d < bd) { bd = d; best = n; }
       });
