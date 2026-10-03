@@ -490,7 +490,8 @@
     // ----- view transform -----
     function dockW() { return dock.classList.contains('open') && W >= 900 ? dock.offsetWidth + 28 : 0; }
     function fitView() {
-      var mobile = W < 1024, top = mobile ? 132 : 92, bottom = mobile ? 104 : 24, side = 16;
+      var mobile = W < 1024, sheet = W < 900 && dock.classList.contains('open') ? dock.offsetHeight + 96 : 0;
+      var top = mobile ? 132 : 92, bottom = mobile ? Math.max(104, sheet) : 24, side = 16;
       var aw = Math.max(200, W - dockW() - side * 2), ah = Math.max(200, H - top - bottom);
       var bw = BOUNDS.maxX - BOUNDS.minX, bh = BOUNDS.maxY - BOUNDS.minY;
       var k = clamp(Math.min(aw / bw, ah / bh), 0.15, 2);
