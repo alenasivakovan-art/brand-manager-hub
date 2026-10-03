@@ -1,5 +1,5 @@
-var CACHE_NAME = 'bmh-cache-v5';
-var APP_SHELL = ['./', './index.html', './style.css', './data.js', './core.js', './views.js', './main.js', './manifest.webmanifest', './icons/icon.svg'];
+var CACHE_NAME = 'bmh-cache-v6';
+var APP_SHELL = ['./', './index.html', './style.css', './data.js', './core.js', './views.js', './main.js', './system.js', './system.css', './manifest.webmanifest', './icons/icon.svg'];
 
 self.addEventListener('install', function (event) {
   event.waitUntil(caches.open(CACHE_NAME).then(function (c) { return c.addAll(APP_SHELL); }).then(function () { return self.skipWaiting(); }));

@@ -10,6 +10,7 @@
     if (h[0] === 'projects') return { name: 'projects', folder: h[1] || null };
     if (h[0] === 'p' && h[1]) return { name: 'project', id: h[1], tab: h[2] || 'overview' };
     if (h[0] === 'kb') return { name: 'kb', tab: h[1] || 'method' };
+    if (h[0] === 'system') return { name: 'system', id: h[1] || null };
     if (h[0] === 'settings') return { name: 'settings' };
     return { name: 'home' };
   }
@@ -21,7 +22,8 @@
   // ---------- render ----------
   BM.render = function () {
     route = parseRoute();
-    var key = route.name + '/' + (route.id || route.folder || '') + '/' + (route.tab || '');
+    if (BM.systemUnmount) BM.systemUnmount();
+    var key = route.name + '/' + (route.name === 'system' ? '' : (route.id || route.folder || '')) + '/' + (route.tab || '');
     var routeChanged = key !== lastRouteKey;
     lastRouteKey = key;
 
@@ -37,6 +39,7 @@
       document.title = 'Проекты · Бренд-менеджер';
     } else if (route.name === 'kb') { html = V.kb(route.tab); document.title = 'База знаний · Бренд-менеджер'; }
     else if (route.name === 'settings') { html = V.settings(); document.title = 'Настройки · Бренд-менеджер'; }
+    else if (route.name === 'system') { html = V.system(route.id); document.title = 'Система маркетинга · Бренд-менеджер'; }
     else { html = V.home(); document.title = 'Бренд-менеджер'; }
 
     document.getElementById('sidebar').innerHTML = V.sidebar(route);
@@ -46,6 +49,7 @@
     updateBottomNav();
 
     if (route.name === 'kb' && route.tab === 'process') renderMermaid();
+    if (route.name === 'system') BM.systemMount();
     var tabsBar = document.querySelector('#page .tabs'), activeTab = tabsBar && tabsBar.querySelector('.tab.active');
     if (activeTab && (activeTab.offsetLeft < tabsBar.scrollLeft || activeTab.offsetLeft + activeTab.offsetWidth > tabsBar.scrollLeft + tabsBar.clientWidth)) {
       tabsBar.scrollLeft = activeTab.offsetLeft - (tabsBar.clientWidth - activeTab.offsetWidth) / 2;
@@ -485,6 +489,7 @@
       { t: 'Новая папка', i: 'folderPlus', run: function () { folderModal(null); } },
       { t: 'Главная', i: 'home', run: function () { go('#/'); } },
       { t: 'Все проекты', i: 'grid', run: function () { go('#/projects'); } },
+      { t: 'Система маркетинга', i: 'network', run: function () { go('#/system'); } },
       { t: 'База знаний', i: 'book', run: function () { go('#/kb'); } },
       { t: 'Карта процессов', i: 'map', run: function () { go('#/kb/process'); } },
       { t: 'Настройки и синхронизация', i: 'sliders', run: function () { go('#/settings'); } },

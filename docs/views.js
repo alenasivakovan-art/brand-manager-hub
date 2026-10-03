@@ -75,6 +75,7 @@
       '<nav class="nav-group" aria-label="Основная навигация">' +
         navItem('#/', 'home', 'Главная', route.name === 'home') +
         navItem('#/projects', 'grid', 'Все проекты', route.name === 'projects' && !route.folder, s.projects.length) +
+        navItem('#/system', 'network', 'Система маркетинга', route.name === 'system') +
         navItem('#/kb', 'book', 'База знаний', route.name === 'kb') +
       '</nav>' +
       '<div class="nav-group"><div class="nav-label"><span>Папки</span><button type="button" class="icon-btn sm" data-action="new-folder" aria-label="Новая папка">' + icon('plus', 'sm') + '</button></div>' +
