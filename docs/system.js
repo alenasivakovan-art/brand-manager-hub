@@ -488,8 +488,7 @@
     edges.forEach(function (e) { if (e.to === fid) place(e.from, -1); });
     cols['1'].slice().forEach(function (id) { if (byId[id].layer === 4) return; edges.forEach(function (e) { if (e.from === id && e.w >= 2) place(e.to, 2); }); });
     cols['-1'].slice().forEach(function (id) { edges.forEach(function (e) { if (e.to === id && e.w >= 2) place(e.from, -2); }); });
-    cols['2'].slice().forEach(function (id) { if (byId[id].layer === 4) return; edges.forEach(function (e) { if (e.from === id && e.w === 3) place(e.to, 3); }); });
-    var X = 340, DY = 68;
+    var X = 300, DY = 70;
     function ys(list) { list.forEach(function (id, i) { var it = g.byId[id]; if (it) it.y = (i - (list.length - 1) / 2) * DY; }); }
     function bary(list, ref, dirFrom) {
       return list.map(function (id) {
@@ -525,7 +524,7 @@
       }
       g.threads.push(makeThread(a, p1, p2, b, { kind: 'edge', e: e, from: e.from, to: e.to, aux: !main, amp: main ? 2 + r() * 2.5 : 3, cyc: 1 + r(), ph: r() * 6.283, w: 0.8 + e.w * 0.32 }));
     });
-    finishBounds(g, 230, 70);
+    finishBounds(g, 120, 70);
     return g;
   }
 
@@ -536,10 +535,10 @@
     return measureCtx.measureText(txt).width;
   }
   function layoutMoney() {
-    var g = newGeo('money'), X = 300, DY = 64, y = 0;
+    var g = newGeo('money'), X = 290, DY = 55, y = 0;
     function walk(id, depth) {
       var m = MONEY_BY[id];
-      var it = addItem(g, { id: id, m: m, n: m.node ? byId[m.node] : null, x: depth * X, y: 0, box: true, depth: depth, h: 48 });
+      var it = addItem(g, { id: id, m: m, n: m.node ? byId[m.node] : null, x: depth * X, y: 0, box: true, depth: depth, h: 46 });
       it.w = Math.max(textW(m.label, '600 14px Onest, sans-serif'), textW(m.formula || '', '400 11.5px Onest, sans-serif')) + (m.op ? 46 : 30);
       it.w = Math.min(it.w, 262);
       if (m.children && m.children.length) {
@@ -549,7 +548,7 @@
       return it;
     }
     walk('m_profit', 0);
-    y += 90;
+    y += 70;
     var treeTop = y;
     walk('k_root', 0);
     g.columns.push({ x: 0, title: 'Прибыль бренда', top: -40, money: true });
@@ -987,9 +986,7 @@
         if (focus && st.dim && slice !== 'cause') return;
         var lx, ly, al, bl;
         if (slice === 'cause') {
-          if (it.col < 0) { lx = sx - rs - 8; ly = sy; al = 'right'; bl = 'middle'; }
-          else if (it.col > 0) { lx = sx + rs + 8; ly = sy; al = 'left'; bl = 'middle'; }
-          else { lx = sx; ly = sy + rs + 10; al = 'center'; bl = 'top'; }
+          lx = sx; ly = sy + rs + (it.col === 0 ? 10 : 6); al = 'center'; bl = 'top';
         } else if (n.layer === 4) { lx = sx + (it.x < 0 ? -1 : 1) * (rs + 8); ly = sy; al = it.x < 0 ? 'right' : 'left'; bl = 'middle'; }
         else {
           var c = geo.clusters.filter(function (cc) { return cc.stage === it.cluster; })[0];
