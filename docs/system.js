@@ -335,7 +335,7 @@
   }
 
 
-  // ---------- brain layout (world coordinates) ----------
+  // ---------- shared constants ----------
   var ORDER = {
     0: ['budget', 'team', 'analytics', 'research', 'niche', 'platform', 'packaging', 'product', 'price'],
     1: ['ads', 'external', 'influencers', 'pr', 'smm', 'promo', 'card', 'experiments', 'reviewsWork', 'stock', 'crm', 'community', 'referral', 'bundles'],
@@ -343,27 +343,68 @@
     3: ['romi', 'unit', 'turnover', 'revenue', 'share', 'ltv', 'ltvcac'],
     4: ['company', 'equity']
   };
-  var RX = [960, 750, 535, 320], RYF = 0.78, CORE = { x: 0, y: 60 }, STEM = { x: 0, y: 340 }, TIP = { x: 0, y: 620 };
-  var DOT = [7, 6.5, 6, 7.5, 11];
-  (function layout() {
-    [0, 1, 2, 3].forEach(function (L) {
-      var ids = ORDER[L], n = ids.length;
-      var spread = [0.62, 0.58, 0.54, 0.46][L], a0 = Math.PI * (1.5 - spread), a1 = Math.PI * (1.5 + spread);
-      ids.forEach(function (id, i) {
-        var t = a0 + (i + 0.5) / n * (a1 - a0);
-        var nd = byId[id];
-        nd.x = Math.cos(t) * RX[L]; nd.y = Math.sin(t) * RX[L] * RYF; nd.r = DOT[L];
-      });
-    });
-    byId.company.x = -84; byId.company.y = 262; byId.company.r = DOT[4];
-    byId.equity.x = 84; byId.equity.y = 262; byId.equity.r = DOT[4];
-  })();
-
-  var NPT = 42;
+  var ORDER_IDX = {};
+  Object.keys(ORDER).forEach(function (L) { ORDER[L].forEach(function (id, i) { ORDER_IDX[id] = i; }); });
+  var STAGE_C = { found: '#7FA7B5', acq: '#8FA780', act: '#D0AE5E', ret: '#C98F6B', ref: '#A596C8', rev: '#6E9E9A', brand: '#5B7550' };
+  var CLUSTERS = ['found', 'acq', 'act', 'ret', 'ref', 'rev'];
+  var CLUSTER_TITLE = { found: 'Фундамент', acq: 'Привлечение', act: 'Активация', ret: 'Удержание', ref: 'Рекомендации', rev: 'Монетизация', brand: 'Бренд и компания' };
+  var TYPES = [
+    { id: 'all', label: 'Все типы узлов' }, { id: '0', label: 'Фундамент и ресурсы' }, { id: '1', label: 'Действия' },
+    { id: '2', label: 'Показатели' }, { id: '3', label: 'Результаты' }, { id: '4', label: 'Бренд и компания' }
+  ];
+  var SLICES = [
+    { id: 'overview', label: 'Обзор', icon: 'network' },
+    { id: 'cause', label: 'Причины и следствия', icon: 'arrowR' },
+    { id: 'money', label: 'Деньги', icon: 'chart' }
+  ];
+  var LAYER_R = [8, 7, 6.5, 7.5, 12];
+  function clusterOf(n) { return n.layer === 4 ? 'brand' : n.stage === 'all' ? 'found' : n.stage; }
+  function hexRgb(h) { h = h.replace('#', ''); var v = parseInt(h, 16); return ((v >> 16) & 255) + ',' + ((v >> 8) & 255) + ',' + (v & 255); }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
   function rnd(seed) {
     var s = seed % 2147483647; if (s <= 0) s += 2147483646;
     return function () { s = s * 16807 % 2147483647; return (s - 1) / 2147483646; };
   }
+
+  // ---------- money driver trees ----------
+  var MONEY = [
+    { id: 'm_profit', label: 'Прибыль', node: 'company', formula: 'Выручка − Расходы', desc: 'То, ради чего работает вся система. Растёт двумя путями: больше выручки или меньше расходов на каждый рубль выручки.', children: ['m_rev', 'm_cost'] },
+    { id: 'm_rev', label: 'Выручка', node: 'revenue', op: '+', formula: 'Новые + повторные покупки', desc: 'Деньги от выкупленных заказов новых и вернувшихся покупателей.', children: ['m_newrev', 'm_reprev'] },
+    { id: 'm_newrev', label: 'Выручка с новых покупателей', op: '+', formula: 'Трафик × CR × выкуп × средний чек', desc: 'Четыре множителя: улучшение любого из них на 10% даёт +10% к этой выручке.', children: ['m_traffic', 'm_cr', 'm_buyout', 'm_aov'] },
+    { id: 'm_traffic', label: 'Трафик в карточку', op: '×', formula: 'Показы × CTR', desc: 'Сколько людей перешло в карточку из выдачи, рекламы и внешних источников.', children: ['m_impr', 'm_ctr'] },
+    { id: 'm_impr', label: 'Показы', op: '×', formula: 'Органика + реклама + внешний + бренд', desc: 'Сколько раз карточку увидели. Органика и брендовый спрос — бесплатные, реклама и внешний трафик — платные.', children: ['m_rank', 'm_ads', 'm_ext', 'm_brand'] },
+    { id: 'm_rank', label: 'Органика', node: 'ranking', op: '+', formula: 'Позиции в поиске' },
+    { id: 'm_ads', label: 'Реклама на МП', node: 'ads', op: '+', formula: 'Платные показы' },
+    { id: 'm_ext', label: 'Внешний трафик', node: 'external', op: '+', formula: 'VK, Директ, соцсети' },
+    { id: 'm_brand', label: 'Брендовый спрос', node: 'brandSearch', op: '+', formula: 'Поиск по названию' },
+    { id: 'm_ctr', label: 'CTR', node: 'ctr', op: '×', formula: 'Клики ÷ показы' },
+    { id: 'm_cr', label: 'Конверсия', node: 'cr', op: '×', formula: 'Заказы ÷ переходы' },
+    { id: 'm_buyout', label: 'Доля выкупа', node: 'buyout', op: '×', formula: 'Выкуплено ÷ заказано' },
+    { id: 'm_aov', label: 'Средний чек', node: 'aov', op: '×', formula: 'Выручка ÷ заказы' },
+    { id: 'm_reprev', label: 'Выручка с повторных', op: '+', formula: 'Покупатели × доля повторных × чек', desc: 'Деньги без затрат на привлечение — самый дешёвый рост.', children: ['m_repeat', 'm_aov2'] },
+    { id: 'm_repeat', label: 'Повторные покупки', node: 'repeat', op: '×', formula: 'Доля вернувшихся' },
+    { id: 'm_aov2', label: 'Средний чек', node: 'aov', op: '×', formula: 'Наборы и допродажи' },
+    { id: 'm_cost', label: 'Расходы', op: '−', formula: 'Себестоимость + МП + реклама + маркетинг + налог', desc: 'Всё, что вычитается из выручки. Реклама считается как ДРР × выручка.', children: ['m_cogs', 'm_mp', 'm_adcost', 'm_mkt', 'm_tax'] },
+    { id: 'm_cogs', label: 'Себестоимость и упаковка', node: 'product', op: '+', formula: 'На единицу товара' },
+    { id: 'm_mp', label: 'Комиссия и логистика МП', op: '+', formula: 'Комиссия % + доставка', desc: 'Тарифы площадки: комиссия категории, логистика до склада и до покупателя, хранение.' },
+    { id: 'm_adcost', label: 'Реклама на МП', node: 'drr', op: '+', formula: 'ДРР × выручка' },
+    { id: 'm_mkt', label: 'Блогеры, SMM, PR', op: '+', formula: 'Внешний маркетинг', desc: 'Расходы на продвижение вне площадки: входят в CAC вместе с рекламой.' },
+    { id: 'm_tax', label: 'Налог', op: '+', formula: '% от выручки', desc: 'Налог по выбранной системе налогообложения.' },
+
+    { id: 'k_root', label: 'LTV / CAC', node: 'ltvcac', formula: 'LTV ÷ CAC, цель ≥ 3', desc: 'Северная звезда: окупается ли покупатель с учётом всех будущих покупок.', children: ['k_ltv', 'k_cac'] },
+    { id: 'k_ltv', label: 'LTV', node: 'ltv', op: '÷', formula: 'Чек × частота × маржинальность', desc: 'Маржа, которую покупатель приносит за всё время.', children: ['k_aov', 'k_freq', 'k_margin'] },
+    { id: 'k_aov', label: 'Средний чек', node: 'aov', op: '×', formula: 'Наборы, допродажи, цена' },
+    { id: 'k_freq', label: 'Частота покупок', node: 'repeat', op: '×', formula: 'CRM, сообщество, качество' },
+    { id: 'k_margin', label: 'Маржинальность', node: 'unit', op: '×', formula: 'Прибыль с единицы ÷ цена' },
+    { id: 'k_cac', label: 'CAC', node: 'cac', op: '÷', formula: 'Расходы на привлечение ÷ новые покупатели', desc: 'Сколько стоит один новый покупатель со всеми расходами.', children: ['k_spend', 'k_new'] },
+    { id: 'k_spend', label: 'Расходы на привлечение', node: 'ads', op: '×', formula: 'Реклама + блогеры + внешний + PR' },
+    { id: 'k_new', label: 'Новые покупатели', node: 'cr', op: '÷', formula: 'Трафик × конверсия' }
+  ];
+  var MONEY_BY = {};
+  MONEY.forEach(function (m) { MONEY_BY[m.id] = m; });
+
+  // ---------- geometry ----------
+  var NPT = 36;
   function makeThread(p0, p1, p2, p3, opt) {
     var base = new Float32Array(NPT * 2), nrm = new Float32Array(NPT * 2);
     for (var i = 0; i < NPT; i++) {
@@ -378,59 +419,225 @@
     opt.base = base; opt.nrm = nrm; opt.pts = new Float32Array(NPT * 2);
     return opt;
   }
-  var threads = [], fibers = [];
-  edges.forEach(function (e) {
-    var a = byId[e.from], b = byId[e.to], r = rnd(e.i * 97 + 13), pull = 0.36 + r() * 0.14;
-    var p1 = { x: a.x + (CORE.x - a.x) * pull + (r() - 0.5) * 110, y: a.y + (CORE.y - a.y) * pull + (r() - 0.5) * 80 };
-    var p2 = { x: b.x + (CORE.x - b.x) * pull + (r() - 0.5) * 110, y: b.y + (CORE.y - b.y) * pull + (r() - 0.5) * 80 };
-    e.th = makeThread(a, p1, p2, b, { kind: 'edge', e: e, amp: 3.5 + r() * 4.5, cyc: 1.1 + r() * 1.4, ph: r() * 6.283, w: 0.7 + e.w * 0.28 });
-    threads.push(e.th);
-  });
-  NODES.forEach(function (n, k) {
-    var count = n.layer === 0 ? 2 : n.layer === 4 ? 3 : 1;
-    n.fibers = [];
-    for (var j = 0; j < count; j++) {
-      var r = rnd(k * 131 + j * 17 + 7), p1;
-      if (n.layer === 4) p1 = { x: n.x * (0.5 + r() * 0.3), y: n.y + 50 + r() * 30 };
-      else p1 = { x: n.x + (CORE.x - n.x) * (0.42 + r() * 0.2) + (r() - 0.5) * 140, y: n.y + (CORE.y + 90 - n.y) * 0.55 + (r() - 0.5) * 70 };
-      var p2 = { x: (r() - 0.5) * (n.layer === 4 ? 30 : 80), y: STEM.y + (r() - 0.5) * 50 };
-      var p3 = { x: (r() - 0.5) * 5, y: TIP.y + r() * 6 };
-      var th = makeThread(n, p1, p2, p3, { kind: 'fiber', node: n, amp: 4 + r() * 6, cyc: 0.9 + r() * 1.2, ph: r() * 6.283, w: 0.5 + r() * 0.4 });
-      n.fibers.push(th); fibers.push(th); threads.push(th);
-    }
-  });
-  var BOUNDS = (function () {
+  function newGeo(slice) { return { slice: slice, items: [], byId: {}, threads: [], fibers: [], clusters: [], columns: [] }; }
+  function addItem(g, it) { g.items.push(it); g.byId[it.id] = it; return it; }
+  function finishBounds(g, mx, my) {
     var b = { minX: 1e9, maxX: -1e9, minY: 1e9, maxY: -1e9 };
-    NODES.forEach(function (n) { b.minX = Math.min(b.minX, n.x); b.maxX = Math.max(b.maxX, n.x); b.minY = Math.min(b.minY, n.y); b.maxY = Math.max(b.maxY, n.y); });
-    b.minX -= 240; b.maxX += 240; b.minY -= 50; b.maxY = TIP.y + 40;
-    return b;
-  })();
+    g.items.forEach(function (it) {
+      var w = it.w || 0, h = it.h || 0;
+      b.minX = Math.min(b.minX, it.x - (it.box ? 0 : 0)); b.maxX = Math.max(b.maxX, it.x + w);
+      b.minY = Math.min(b.minY, it.y - h / 2); b.maxY = Math.max(b.maxY, it.y + h / 2);
+    });
+    g.clusters.forEach(function (c) { b.minX = Math.min(b.minX, c.x - c.r); b.maxX = Math.max(b.maxX, c.x + c.r); b.minY = Math.min(b.minY, c.y - c.r - 40); b.maxY = Math.max(b.maxY, c.y + c.r); });
+    b.minX -= mx; b.maxX += mx; b.minY -= my; b.maxY += my;
+    g.bounds = b;
+  }
+
+  function layoutOverview() {
+    var g = newGeo('overview'), R = 740;
+    CLUSTERS.forEach(function (st, ci) {
+      var a = (-90 + ci * 60) * Math.PI / 180;
+      var members = NODES.filter(function (n) { return clusterOf(n) === st; })
+        .sort(function (x, y) { return (y.layer - x.layer) || (ORDER_IDX[x.id] - ORDER_IDX[y.id]); });
+      var cx = Math.cos(a) * R, cy = Math.sin(a) * R * 0.8, step = 74;
+      var cr = step * Math.sqrt(members.length) + 50;
+      g.clusters.push({ stage: st, x: cx, y: cy, r: cr, rgb: hexRgb(STAGE_C[st]), title: CLUSTER_TITLE[st], seed: ci * 1.7, ang: a });
+      members.forEach(function (n, i) {
+        var rr = step * Math.sqrt(i + 0.45), th = i * 2.39996 + a + Math.PI;
+        addItem(g, { id: n.id, n: n, x: cx + Math.cos(th) * rr, y: cy + Math.sin(th) * rr, r: LAYER_R[n.layer], cluster: st });
+      });
+    });
+    addItem(g, { id: 'company', n: byId.company, x: -72, y: 0, r: LAYER_R[4], cluster: 'brand' });
+    addItem(g, { id: 'equity', n: byId.equity, x: 72, y: 0, r: LAYER_R[4], cluster: 'brand' });
+    g.clusters.push({ stage: 'brand', x: 0, y: 0, r: 150, rgb: hexRgb(STAGE_C.brand), title: CLUSTER_TITLE.brand, seed: 9, ang: Math.PI / 2 });
+    edges.forEach(function (e) {
+      var a = g.byId[e.from], b = g.byId[e.to], r = rnd(e.i * 97 + 13), p1, p2;
+      if (a.cluster === b.cluster) {
+        var dx = b.x - a.x, dy = b.y - a.y, L = Math.sqrt(dx * dx + dy * dy) || 1, nx = -dy / L, ny = dx / L, bend = (r() < 0.5 ? -1 : 1) * (16 + r() * 28);
+        p1 = { x: a.x + dx * 0.33 + nx * bend, y: a.y + dy * 0.33 + ny * bend };
+        p2 = { x: a.x + dx * 0.66 + nx * bend, y: a.y + dy * 0.66 + ny * bend };
+      } else {
+        var pull = 0.3 + r() * 0.18;
+        p1 = { x: a.x * (1 - pull) + (r() - 0.5) * 90, y: a.y * (1 - pull) + (r() - 0.5) * 90 };
+        p2 = { x: b.x * (1 - pull) + (r() - 0.5) * 90, y: b.y * (1 - pull) + (r() - 0.5) * 90 };
+      }
+      g.threads.push(makeThread(a, p1, p2, b, { kind: 'edge', e: e, from: e.from, to: e.to, amp: 2.5 + r() * 4, cyc: 1 + r() * 1.3, ph: r() * 6.283, w: 0.7 + e.w * 0.28 }));
+    });
+    g.clusters.forEach(function (c, ci) {
+      if (c.stage === 'brand') return;
+      for (var j = 0; j < 5; j++) {
+        var r = rnd(ci * 53 + j * 11 + 5), dir = Math.atan2(-c.y, -c.x) + (r() - 0.5) * 1.3;
+        var s0 = { x: c.x + Math.cos(dir) * c.r * 0.75, y: c.y + Math.sin(dir) * c.r * 0.75 };
+        var s3 = { x: (r() - 0.5) * 110, y: (r() - 0.5) * 70 };
+        var s1 = { x: s0.x + (s3.x - s0.x) * 0.35 + (r() - 0.5) * 130, y: s0.y + (s3.y - s0.y) * 0.35 + (r() - 0.5) * 130 };
+        var s2 = { x: s0.x + (s3.x - s0.x) * 0.72 + (r() - 0.5) * 90, y: s0.y + (s3.y - s0.y) * 0.72 + (r() - 0.5) * 90 };
+        var th = makeThread(s0, s1, s2, s3, { kind: 'fiber', stage: c.stage, amp: 5 + r() * 6, cyc: 0.9 + r(), ph: r() * 6.283, w: 0.55 + r() * 0.4 });
+        g.fibers.push(th); g.threads.push(th);
+      }
+    });
+    finishBounds(g, 90, 60);
+    return g;
+  }
+
+  function layoutCause(fid) {
+    var g = newGeo('cause'); g.focus = fid;
+    var col = {}, cols = { '-2': [], '-1': [], '0': [fid], '1': [], '2': [], '3': [] };
+    col[fid] = 0;
+    function place(id, c) { if (col[id] != null) return; col[id] = c; cols[c].push(id); }
+    edges.forEach(function (e) { if (e.from === fid) place(e.to, 1); });
+    edges.forEach(function (e) { if (e.to === fid) place(e.from, -1); });
+    cols['1'].slice().forEach(function (id) { if (byId[id].layer === 4) return; edges.forEach(function (e) { if (e.from === id && e.w >= 2) place(e.to, 2); }); });
+    cols['-1'].slice().forEach(function (id) { edges.forEach(function (e) { if (e.to === id && e.w >= 2) place(e.from, -2); }); });
+    cols['2'].slice().forEach(function (id) { if (byId[id].layer === 4) return; edges.forEach(function (e) { if (e.from === id && e.w === 3) place(e.to, 3); }); });
+    var X = 340, DY = 68;
+    function ys(list) { list.forEach(function (id, i) { var it = g.byId[id]; if (it) it.y = (i - (list.length - 1) / 2) * DY; }); }
+    function bary(list, ref, dirFrom) {
+      return list.map(function (id) {
+        var ys2 = [];
+        edges.forEach(function (e) {
+          var other = dirFrom ? (e.to === id ? e.from : null) : (e.from === id ? e.to : null);
+          if (other && ref.indexOf(other) > -1 && g.byId[other]) ys2.push(g.byId[other].y);
+        });
+        return { id: id, k: ys2.length ? ys2.reduce(function (a, b) { return a + b; }, 0) / ys2.length : 0 };
+      }).sort(function (a, b) { return a.k - b.k; }).map(function (x) { return x.id; });
+    }
+    ['0', '1', '-1', '2', '-2', '3'].forEach(function (c) {
+      var list = cols[c];
+      list.forEach(function (id) { addItem(g, { id: id, n: byId[id], x: (+c) * X, y: 0, r: LAYER_R[byId[id].layer] * (c === '0' ? 1.5 : 1), col: +c }); });
+      if (c === '0') return;
+      var ref = cols[String(+c > 0 ? +c - 1 : +c + 1)];
+      cols[c] = bary(list, ref, +c > 0);
+      ys(cols[c]);
+    });
+    var titles = { '-2': 'Причины · 2-й шаг', '-1': 'Что влияет', '0': 'Узел', '1': 'На что влияет', '2': 'Следствия · 2-й шаг', '3': 'Следствия · 3-й шаг' };
+    Object.keys(cols).forEach(function (c) { if (cols[c].length) g.columns.push({ x: (+c) * X, title: titles[c], n: cols[c].length, top: -((cols[c].length - 1) / 2) * DY }); });
+    edges.forEach(function (e) {
+      var a = g.byId[e.from], b = g.byId[e.to];
+      if (!a || !b || a.col === b.col) return;
+      var r = rnd(e.i * 41 + 3), main = b.col === a.col + 1, p1, p2;
+      if (main) {
+        var dx = b.x - a.x;
+        p1 = { x: a.x + dx * 0.5, y: a.y + (r() - 0.5) * 10 }; p2 = { x: b.x - dx * 0.5, y: b.y + (r() - 0.5) * 10 };
+      } else {
+        var up = (a.y + b.y) / 2 <= 0 ? -1 : 1, lift = 70 + Math.abs(b.col - a.col) * 40;
+        p1 = { x: a.x + (b.x - a.x) * 0.25, y: Math.min(a.y, b.y) * (up < 0 ? 1 : 0) + Math.max(a.y, b.y) * (up > 0 ? 1 : 0) + up * lift };
+        p2 = { x: a.x + (b.x - a.x) * 0.75, y: p1.y };
+      }
+      g.threads.push(makeThread(a, p1, p2, b, { kind: 'edge', e: e, from: e.from, to: e.to, aux: !main, amp: main ? 2 + r() * 2.5 : 3, cyc: 1 + r(), ph: r() * 6.283, w: 0.8 + e.w * 0.32 }));
+    });
+    finishBounds(g, 230, 70);
+    return g;
+  }
+
+  var measureCtx = null;
+  function textW(txt, font) {
+    if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+    measureCtx.font = font;
+    return measureCtx.measureText(txt).width;
+  }
+  function layoutMoney() {
+    var g = newGeo('money'), X = 300, DY = 64, y = 0;
+    function walk(id, depth) {
+      var m = MONEY_BY[id];
+      var it = addItem(g, { id: id, m: m, n: m.node ? byId[m.node] : null, x: depth * X, y: 0, box: true, depth: depth, h: 48 });
+      it.w = Math.max(textW(m.label, '600 14px Onest, sans-serif'), textW(m.formula || '', '400 11.5px Onest, sans-serif')) + (m.op ? 46 : 30);
+      it.w = Math.min(it.w, 262);
+      if (m.children && m.children.length) {
+        var kids = m.children.map(function (c) { return walk(c, depth + 1); });
+        it.y = (kids[0].y + kids[kids.length - 1].y) / 2;
+      } else { it.y = y; y += DY; }
+      return it;
+    }
+    walk('m_profit', 0);
+    y += 90;
+    var treeTop = y;
+    walk('k_root', 0);
+    g.columns.push({ x: 0, title: 'Прибыль бренда', top: -40, money: true });
+    g.columns.push({ x: 0, title: 'Северная звезда: LTV / CAC', top: treeTop - 40, money: true, abs: true });
+    MONEY.forEach(function (m) {
+      (m.children || []).forEach(function (cid, k) {
+        var p = g.byId[m.id], c = g.byId[cid], r = rnd(k * 31 + cid.length * 7);
+        var a = { x: c.x, y: c.y }, b = { x: p.x + p.w, y: p.y }, dx = a.x - b.x;
+        g.threads.push(makeThread(a, { x: a.x - dx * 0.5, y: a.y }, { x: b.x + dx * 0.5, y: b.y }, b, { kind: 'tree', from: cid, to: m.id, op: c.m.op, amp: 2 + r() * 2.5, cyc: 1 + r(), ph: r() * 6.283, w: 1.1 }));
+      });
+    });
+    finishBounds(g, 60, 70);
+    return g;
+  }
+
+  // ---------- money values from the project ----------
+  function avgSku(p, fn) {
+    var v = p.skus.map(fn).filter(function (x) { return x != null && !isNaN(x); });
+    return v.length ? v.reduce(function (a, b) { return a + b; }, 0) / v.length : null;
+  }
+  function moneyVal(m, p) {
+    if (!p) return null;
+    var v;
+    switch (m.id) {
+      case 'm_aov': case 'm_aov2': case 'k_aov':
+        v = avgSku(p, function (s) { return BM.num(s.sellPrice); });
+        return v == null ? null : { text: '≈ ' + BM.money(v) + ' · средняя цена SKU', level: null };
+      case 'm_cogs':
+        v = avgSku(p, function (s) { return (BM.num(s.costPrice) || 0) + (BM.num(s.packaging) || 0); });
+        return v == null ? null : { text: '≈ ' + BM.money(v) + ' на единицу', level: null };
+      case 'm_mp':
+        v = avgSku(p, function (s) { var c = BM.computeSku(s); return c.fee + (BM.num(s.logisticsIn) || 0) + (BM.num(s.logisticsOut) || 0); });
+        return v == null ? null : { text: '≈ ' + BM.money(v) + ' на единицу', level: null };
+      case 'm_adcost':
+        v = avgSku(p, function (s) { return BM.num(s.adPct); });
+        return v == null ? null : { text: 'ДРР ' + v.toFixed(1) + '%', level: v <= 10 ? 'good' : v <= 20 ? 'mid' : 'bad' };
+      case 'm_tax':
+        v = avgSku(p, function (s) { return BM.num(s.taxPct); });
+        return v == null ? null : { text: v.toFixed(1) + '% от цены', level: null };
+      case 'm_profit':
+        v = avgSku(p, function (s) { return BM.computeSku(s).profit; });
+        var mg = avgSku(p, function (s) { return BM.computeSku(s).margin; });
+        return v == null ? null : { text: '≈ ' + BM.money(v) + ' с единицы', level: mg >= 20 ? 'good' : mg >= 5 ? 'mid' : 'bad' };
+      case 'k_margin':
+        return health('unit', p);
+    }
+    if (m.node && ['revenue', 'drr', 'unit', 'budget', 'platform'].indexOf(m.node) > -1) return health(m.node, p);
+    return null;
+  }
 
   // ---------- view ----------
-  BM.views.system = function (nodeId) {
+  BM.views.system = function (a, b) {
     var ui = BM.ui;
     if (!ui.sysMode) ui.sysMode = 'links';
     if (!ui.sysImpulse) ui.sysImpulse = 1;
     if (!ui.sysStage) ui.sysStage = 'all';
+    if (!ui.sysType) ui.sysType = 'all';
+    if (!ui.sysFocus) ui.sysFocus = 'ltvcac';
+    if (a === 'cause') { ui.sysSlice = 'cause'; if (b && byId[b]) ui.sysFocus = b; ui.sysNode = ui.sysFocus; }
+    else if (a === 'money') { ui.sysSlice = 'money'; ui.sysNode = null; }
+    else { ui.sysSlice = 'overview'; ui.sysNode = a && byId[a] ? a : null; }
     if (ui.sysProject === undefined) ui.sysProject = BM.state.projects[0] ? BM.state.projects[0].id : '';
     if (ui.sysProject && !BM.project(ui.sysProject)) ui.sysProject = BM.state.projects[0] ? BM.state.projects[0].id : '';
-    ui.sysNode = nodeId && byId[nodeId] ? nodeId : (ui.sysNode && byId[ui.sysNode] ? ui.sysNode : null);
     var p = ui.sysProject ? BM.project(ui.sysProject) : null;
+    var slice = ui.sysSlice;
+    var sliceSeg = '<div class="sys-seg" role="group" aria-label="Срез">' + SLICES.map(function (s) {
+      return '<button type="button" data-sys-slice="' + s.id + '" aria-pressed="' + (slice === s.id) + '">' + icon(s.icon, 'sm') + s.label + '</button>';
+    }).join('') + '</div>';
+    var modes = slice === 'cause' ? '<div class="sys-seg" role="group" aria-label="Режим"><button type="button" data-sys-mode="links" aria-pressed="' + (ui.sysMode === 'links') + '">Связи</button>' +
+      '<button type="button" data-sys-mode="sim" aria-pressed="' + (ui.sysMode === 'sim') + '">' + icon('sparkle', 'sm') + 'Симуляция</button></div>' : '';
+    var filters = slice !== 'money' ?
+      '<label class="sr-only" for="sys-stage-f">Этап воронки</label><select class="select" id="sys-stage-f">' + STAGES.map(function (x) { return '<option value="' + x.id + '"' + (ui.sysStage === x.id ? ' selected' : '') + '>' + esc(x.id === 'all' ? 'Все этапы AARRR' : x.label) + '</option>'; }).join('') + '</select>' +
+      '<label class="sr-only" for="sys-type-f">Тип узла</label><select class="select" id="sys-type-f">' + TYPES.map(function (x) { return '<option value="' + x.id + '"' + (ui.sysType === x.id ? ' selected' : '') + '>' + esc(x.label) + '</option>'; }).join('') + '</select>' : '';
     var projSel = BM.state.projects.length ? '<label class="sr-only" for="sys-project">Данные проекта</label><select class="select" id="sys-project"><option value="">Без данных проекта</option>' +
       BM.state.projects.map(function (x) { return '<option value="' + x.id + '"' + (x.id === ui.sysProject ? ' selected' : '') + '>' + esc(x.name) + '</option>'; }).join('') + '</select>' : '';
-    var modes = '<div class="sys-seg" role="group" aria-label="Режим"><button type="button" data-sys-mode="links" aria-pressed="' + (ui.sysMode === 'links') + '">' + icon('network', 'sm') + 'Связи</button>' +
-      '<button type="button" data-sys-mode="sim" aria-pressed="' + (ui.sysMode === 'sim') + '">' + icon('sparkle', 'sm') + 'Симуляция</button></div>';
-    var stageSel = '<label class="sr-only" for="sys-stage-f">Этап воронки AARRR</label><select class="select" id="sys-stage-f">' + STAGES.map(function (x) { return '<option value="' + x.id + '"' + (ui.sysStage === x.id ? ' selected' : '') + '>' + esc(x.id === 'all' ? 'Все этапы AARRR' : x.label) + '</option>'; }).join('') + '</select>';
-    var legend = LAYERS.map(function (l) { return '<span><i class="lg-dot l' + l.id + '"></i>' + esc(l.title) + '</span>'; }).join('') +
-      '<span><i class="lg-line pos"></i>усиливает</span><span><i class="lg-line neg"></i>снижает</span><span><i class="lg-line in"></i>влияет на выбранный узел</span>' +
-      (p ? '<span><i class="lg-hdot"></i>данные проекта «' + esc(p.name) + '»</span>' : '') +
-      '<span class="lg-tip">Колесо или щипок — масштаб · перетаскивание — перемещение · двойной клик — приблизить. Подписи показателей и результатов появляются при приближении и наведении.</span>';
+    var probs = '<button type="button" class="chip glassy-chip" data-sys-problems aria-pressed="' + !!(ui.sysProblems && p) + '"' + (p ? '' : ' disabled title="Выберите проект с данными"') + '>' + icon('flag', 'sm') + 'Проблемные зоны</button>';
+    var legend = slice === 'overview' ?
+      CLUSTERS.concat(['brand']).map(function (s) { return '<span><i class="lg-dot" style="background:' + STAGE_C[s] + '"></i>' + esc(CLUSTER_TITLE[s]) + '</span>'; }).join('') :
+      slice === 'money' ? '<span><b class="lg-op">+</b>складывается</span><span><b class="lg-op">×</b>умножается</span><span><b class="lg-op">−</b>вычитается</span><span><b class="lg-op">÷</b>делится</span><span><i class="lg-line pos"></i>деньги стекаются к итогу</span>' :
+        '<span><i class="lg-line pos"></i>усиливает</span><span><i class="lg-line neg"></i>снижает</span><span><i class="lg-line in"></i>причина</span><span class="lg-tip">Нажмите на любой узел, чтобы сделать его центром.</span>';
+    legend += (p ? '<span><i class="lg-hdot"></i>данные проекта «' + esc(p.name) + '»</span>' : '') + (slice === 'overview' ? '<span class="lg-tip">Колесо или щипок — масштаб · перетаскивание — перемещение · подписи показателей появляются при приближении и наведении.</span>' : '');
+    var sub = { overview: 'из чего состоит маркетинг', cause: 'почему и что будет дальше', money: 'какой рычаг двигает прибыль' }[slice];
     return '<h1 class="sr-only">Система маркетинга</h1>' +
-      '<div class="sys-stage" id="sys-stage" tabindex="0" aria-label="Карта системы маркетинга. Плюс и минус — масштаб, ноль — вписать, стрелки — перемещение. Узлы доступны списком в разделе «Все узлы».">' +
+      '<div class="sys-stage" id="sys-stage" data-slice="' + slice + '" tabindex="0" aria-label="Карта системы маркетинга. Плюс и минус — масштаб, ноль — вписать, стрелки — перемещение. Узлы доступны списком в разделе «Все узлы».">' +
         '<canvas class="sys-canvas" aria-hidden="true"></canvas>' +
         '<div class="sys-hud">' +
-          '<div class="sys-hud-title glassy"><span class="stat-icon">' + icon('network', 'sm') + '</span><div><b>Система маркетинга</b><small>от действий до бренда</small></div></div>' +
-          '<div class="sys-hud-row">' + modes + stageSel + projSel +
+          '<div class="sys-hud-title glassy"><span class="stat-icon">' + icon('network', 'sm') + '</span><div><b>Система маркетинга</b><small>' + sub + '</small></div></div>' +
+          '<div class="sys-hud-row">' + sliceSeg + modes + filters + projSel + (slice !== 'money' || p ? probs : '') +
             '<button type="button" class="chip glassy-chip" data-sys-dock="presets">' + icon('sparkle', 'sm') + 'Сценарии</button>' +
             '<button type="button" class="chip glassy-chip" data-sys-dock="list">' + icon('tasks', 'sm') + 'Все узлы</button></div>' +
         '</div>' +
@@ -458,8 +665,6 @@
     if (document.fullscreenElement && document.fullscreenElement.id === 'sys-stage') document.exitFullscreen().catch(function () {});
   };
 
-  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
-
   BM.systemMount = function () {
     BM.systemUnmount();
     var stage = document.getElementById('sys-stage');
@@ -467,61 +672,62 @@
     ctl = new AbortController();
     var sig = { signal: ctl.signal };
     document.documentElement.classList.add('sys-lock');
-    var cv = stage.querySelector('.sys-canvas'), ctx = cv.getContext('2d');
-    var dock = stage.querySelector('#sys-panel');
-    var ui = BM.ui;
+    var cv = stage.querySelector('.sys-canvas'), ctx = cv.getContext('2d'), dock = stage.querySelector('#sys-panel');
+    var ui = BM.ui, slice = ui.sysSlice;
     var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
     var dark = BM.isDark();
     var C = dark ? {
-      ink: '214,226,206', baseA: 0.2, fiberA: 0.09, dimA: 0.045, node: '#E6EDE0', label: '#E3EBDD', halo: 'rgba(16,20,16,.86)',
-      glow: '190,226,170', inC: '143,200,216', neg: '238,166,124', good: '141,213,143', bad: '244,140,120', shadow: '0,0,0', comp: 'lighter'
+      ink: '214,226,206', baseA: 0.2, fiberA: 0.1, dimA: 0.045, node: '#E6EDE0', label: '#E3EBDD', muted: '#A9B5A4', halo: 'rgba(16,20,16,.86)',
+      glow: '190,226,170', inC: '143,200,216', neg: '238,166,124', good: '141,213,143', bad: '244,140,120', comp: 'lighter',
+      box: 'rgba(28,34,27,.82)', boxLine: 'rgba(255,255,255,.1)'
     } : {
-      ink: '30,36,28', baseA: 0.27, fiberA: 0.12, dimA: 0.05, node: '#222B20', label: '#242D22', halo: 'rgba(238,239,235,.94)',
-      glow: '96,146,78', inC: '58,128,150', neg: '196,118,72', good: '52,140,66', bad: '186,66,52', shadow: '30,36,28', comp: 'source-over'
+      ink: '30,36,28', baseA: 0.26, fiberA: 0.12, dimA: 0.05, node: '#222B20', label: '#242D22', muted: '#5C6658', halo: 'rgba(238,239,235,.94)',
+      glow: '96,146,78', inC: '58,128,150', neg: '196,118,72', good: '52,140,66', bad: '186,66,52', comp: 'source-over',
+      box: 'rgba(255,255,255,.78)', boxLine: 'rgba(255,255,255,.95)'
     };
-    var rootCs = getComputedStyle(document.documentElement);
-    var LC = [0, 1, 2, 3, 4].map(function (i) { return hexRgb(rootCs.getPropertyValue('--c-l' + i).trim() || '#8FA780'); });
-    function hexRgb(h) { h = h.replace('#', ''); if (h.length === 3) h = h.replace(/./g, '$&$&'); var n = parseInt(h, 16); return ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255); }
-
-    var dpr = 1, W = 0, H = 0, fitK = 1, view = ui.sysView || null, anim = null, userMoved = !!ui.sysMoved;
-    function markMoved(v) { userMoved = v; ui.sysMoved = v; }
+    var p = ui.sysProject ? BM.project(ui.sysProject) : null;
+    var geo = slice === 'cause' ? layoutCause(ui.sysFocus) : slice === 'money' ? layoutMoney() : layoutOverview();
+    var dpr = 1, W = 0, H = 0, fitK = 1, view = null, anim = null, userMoved = false;
     var hoverId = null, pathSel = null, lastSim = null, pulses = [], lastAmb = 0, nextCycle = 0;
+    var healthCache = {};
+    function hOf(it) {
+      if (healthCache[it.id] !== undefined) return healthCache[it.id];
+      var h = it.m ? moneyVal(it.m, p) : (p && it.n ? health(it.n.id, p) : null);
+      healthCache[it.id] = h;
+      return h;
+    }
 
-    // ----- view transform -----
+    // ----- transform -----
     function dockW() { return dock.classList.contains('open') && W >= 900 ? dock.offsetWidth + 28 : 0; }
     function fitView() {
       var mobile = W < 1024, sheet = W < 900 && dock.classList.contains('open') ? dock.offsetHeight + 96 : 0;
       var top = mobile ? 132 : 92, bottom = mobile ? Math.max(104, sheet) : 24, side = 16;
       var aw = Math.max(200, W - dockW() - side * 2), ah = Math.max(200, H - top - bottom);
-      var bw = BOUNDS.maxX - BOUNDS.minX, bh = BOUNDS.maxY - BOUNDS.minY;
-      var k = clamp(Math.min(aw / bw, ah / bh), 0.15, 2);
+      var b = geo.bounds, bw = b.maxX - b.minX, bh = b.maxY - b.minY;
+      var k = clamp(Math.min(aw / bw, ah / bh), 0.12, 1.6);
       fitK = k;
-      return { k: k, x: side + (aw - bw * k) / 2 - BOUNDS.minX * k, y: top + (ah - bh * k) / 2 - BOUNDS.minY * k };
+      return { k: k, x: side + (aw - bw * k) / 2 - b.minX * k, y: top + (ah - bh * k) / 2 - b.minY * k };
     }
     function setView(v, animate) {
-      if (!animate || reduce || !view) { view = v; anim = null; ui.sysView = view; showZoom(); requestDraw(); return; }
+      if (!animate || reduce || !view) { view = v; anim = null; showZoom(); requestDraw(); return; }
       anim = { from: view, to: v, start: performance.now(), dur: 420 };
       requestDraw();
     }
     function zoomAt(f, sx, sy, animate) {
-      markMoved(true);
-      var k = clamp(view.k * f, fitK * 0.35, fitK * 6);
-      f = k / view.k;
-      setView({ k: k, x: sx - (sx - view.x) * f, y: sy - (sy - view.y) * f }, animate);
+      userMoved = true;
+      var base = anim ? anim.to : view;
+      var k = clamp(base.k * f, fitK * 0.35, fitK * 7);
+      f = k / base.k;
+      setView({ k: k, x: sx - (sx - base.x) * f, y: sy - (sy - base.y) * f }, animate);
     }
-    function centerOn(n) {
+    function centerOn(it) {
       var v0 = anim ? anim.to : view;
-      var sx = v0.x + n.x * v0.k, sy = v0.y + n.y * v0.k, pad = 90;
-      var right = W - dockW();
-      if (sx > pad && sx < right - pad && sy > pad + 60 && sy < H - pad - (W < 900 && dock.classList.contains('open') ? H * 0.5 : 0)) return;
-      var cx = (right) / 2, cy = W < 900 && dock.classList.contains('open') ? H * 0.28 : H / 2;
-      setView({ k: v0.k, x: cx - n.x * v0.k, y: cy - n.y * v0.k }, true);
+      var sx = v0.x + it.x * v0.k, sy = v0.y + it.y * v0.k, pad = 90, right = W - dockW();
+      var sheetTop = W < 900 && dock.classList.contains('open') ? H - dock.offsetHeight - 96 : H;
+      if (sx > pad && sx < right - pad && sy > pad + 60 && sy < sheetTop - pad) return;
+      setView({ k: v0.k, x: right / 2 - it.x * v0.k, y: Math.min(H, sheetTop) / 2 + 30 - it.y * v0.k }, true);
     }
-    function showZoom() {
-      var el = stage.querySelector('#sys-zoom-val');
-      if (el && view) el.textContent = Math.round(view.k / fitK * 100) + '%';
-    }
-
+    function showZoom() { var el = stage.querySelector('#sys-zoom-val'); if (el && view) el.textContent = Math.round(view.k / fitK * 100) + '%'; }
     function resize() {
       var r = stage.getBoundingClientRect();
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -532,58 +738,103 @@
       requestDraw();
     }
 
-    // ----- focus state -----
-    function focusId() { return ui.sysNode || hoverId; }
+    // ----- filters & focus -----
     function stageOn() { return ui.sysStage && ui.sysStage !== 'all'; }
-    function inStage(n) { return n.stage === ui.sysStage; }
-    function edgeStyle(e) {
-      var id = focusId();
+    function typeOn() { return ui.sysType && ui.sysType !== 'all'; }
+    function probOn() { return !!(ui.sysProblems && p); }
+    function filtersOn() { return slice !== 'money' ? (stageOn() || typeOn() || probOn()) : probOn(); }
+    function isProblem(it) { var h = hOf(it); return !!(h && (h.level === 'bad' || h.level === 'mid')); }
+    function passes(it) {
+      if (slice === 'money') return !probOn() || isProblem(it);
+      var n = it.n;
+      if (stageOn() && n.stage !== ui.sysStage) return false;
+      if (typeOn() && String(n.layer) !== ui.sysType) return false;
+      if (probOn() && !isProblem(it)) return false;
+      return true;
+    }
+    function focusId() { return ui.sysNode || hoverId; }
+
+    function threadStyle(th) {
+      if (th.kind === 'tree') {
+        var sel = ui.sysNode || hoverId;
+        var hot = sel && (th.from === sel || th.to === sel || isAncestor(sel, th.from));
+        var col = th.op === '−' || th.op === '÷' ? C.neg : C.glow;
+        if (sel) return hot ? { rgb: col, a: 0.95, hl: true } : { dim: true };
+        if (filtersOn()) return passes(geo.byId[th.from]) ? { rgb: C.neg, a: 0.9, hl: true } : { dim: true };
+        return { rgb: col, a: 0.5, hl: true, soft: true };
+      }
+      if (th.kind === 'fiber') return null;
+      var e = th.e, id = focusId();
       if (pathSel) {
         for (var i = 1; i < pathSel.length; i++) if (e.from === pathSel[i - 1] && e.to === pathSel[i]) return { rgb: e.sign > 0 ? C.glow : C.neg, a: 0.95, hl: true };
         return { dim: true };
       }
-      if (!id) {
-        if (!stageOn()) return null;
-        var sa = inStage(byId[e.from]), sb = inStage(byId[e.to]);
-        if (sa && sb) return { rgb: C.glow, a: 0.75, hl: true };
-        return sa || sb ? null : { dim: true };
+      if (slice === 'cause') {
+        if (ui.sysMode === 'sim' && lastSim) {
+          if (lastSim.used[e.i] != null) { var v = lastSim.eff[e.to] || 0; return { rgb: v * byId[e.to].polarity > 0 ? C.good : C.bad, a: 0.9, hl: true }; }
+          return { dim: true };
+        }
+        if (hoverId && hoverId !== ui.sysNode) return (e.from === hoverId || e.to === hoverId) ? { rgb: e.sign > 0 ? C.glow : C.neg, a: 0.95, hl: true } : { dim: true };
+        if (filtersOn() && !(passes(geo.byId[e.from]) && passes(geo.byId[e.to]))) return { dim: true };
+        if (th.aux) return { rgb: e.sign > 0 ? C.glow : C.neg, a: 0.35, hl: true, soft: true };
+        var toward = geo.byId[e.to].col <= 0;
+        return { rgb: e.sign < 0 ? C.neg : (toward ? C.inC : C.glow), a: 0.85, hl: true };
       }
-      if (ui.sysMode === 'sim' && ui.sysNode && lastSim) {
-        if (lastSim.used[e.i] != null) { var v = lastSim.eff[e.to] || 0; return { rgb: v * byId[e.to].polarity > 0 ? C.good : C.bad, a: 0.85, hl: true }; }
-        return { dim: true };
+      if (!id) {
+        if (!filtersOn()) return null;
+        var pa = passes(geo.byId[e.from]), pb = passes(geo.byId[e.to]);
+        if (pa && pb) return { rgb: C.glow, a: 0.75, hl: true };
+        return pa || pb ? null : { dim: true };
       }
       if (e.from === id) return { rgb: e.sign > 0 ? C.glow : C.neg, a: 0.95, hl: true };
       if (e.to === id) return { rgb: e.sign > 0 ? C.inC : C.neg, a: 0.85, hl: true };
       return { dim: true };
     }
-    function nodeState(n) {
-      var id = focusId();
-      if (pathSel) return pathSel.indexOf(n.id) > -1 ? { on: true } : { dim: true };
-      if (!id) return stageOn() ? (inStage(n) ? { on: true } : { dim: true }) : {};
-      if (n.id === id) return { sel: true, on: true };
-      if (ui.sysMode === 'sim' && ui.sysNode && lastSim) {
-        var v = lastSim.eff[n.id];
-        if (v == null || Math.abs(v) < 0.04) return { dim: true };
-        return { on: true, eff: v, good: v * n.polarity > 0 };
+    function isAncestor(a, b) { var m = MONEY_BY[a]; if (!m || !m.children) return false; return m.children.some(function (c) { return c === b || isAncestor(c, b); }); }
+    function itemState(it) {
+      if (slice === 'money') {
+        var sel = ui.sysNode || hoverId;
+        if (sel) return it.id === sel ? { sel: true, on: true } : (isAncestor(sel, it.id) || isAncestor(it.id, sel)) ? { on: true } : { dim: true };
+        if (filtersOn()) return passes(it) ? { on: true } : { dim: true };
+        return {};
       }
-      for (var i = 0; i < edges.length; i++) { var e = edges[i]; if ((e.from === id && e.to === n.id) || (e.to === id && e.from === n.id)) return { on: true }; }
+      var id = focusId();
+      if (pathSel) return pathSel.indexOf(it.id) > -1 ? { on: true } : { dim: true };
+      if (slice === 'cause') {
+        var st = {};
+        if (it.id === ui.sysNode) st.sel = true;
+        if (ui.sysMode === 'sim' && lastSim && it.id !== ui.sysNode) {
+          var v = lastSim.eff[it.id];
+          if (v != null && Math.abs(v) >= 0.04) { st.eff = v; st.good = v * it.n.polarity > 0; st.on = true; } else st.dim = true;
+          return st;
+        }
+        if (hoverId && hoverId !== ui.sysNode) {
+          if (it.id === hoverId) return { on: true, hover: true };
+          return edges.some(function (e) { return (e.from === hoverId && e.to === it.id) || (e.to === hoverId && e.from === it.id); }) ? { on: true } : { dim: true };
+        }
+        if (filtersOn() && !st.sel && !passes(it)) st.dim = true; else st.on = true;
+        return st;
+      }
+      if (!id) return filtersOn() ? (passes(it) ? { on: true } : { dim: true }) : {};
+      if (it.id === id) return { sel: true, on: true };
+      for (var i = 0; i < edges.length; i++) { var e = edges[i]; if ((e.from === id && e.to === it.id) || (e.to === id && e.from === it.id)) return { on: true }; }
       return { dim: true };
     }
 
     // ----- drawing -----
     function undulate(th, t) {
-      var b = th.base, nm = th.nrm, p = th.pts;
+      var b = th.base, nm = th.nrm, q = th.pts;
       for (var i = 0; i < NPT; i++) {
         var s = i / (NPT - 1);
         var off = reduce ? 0 : th.amp * Math.sin(Math.PI * s) * Math.sin(6.283 * th.cyc * s - t * 1.15 + th.ph);
-        p[i * 2] = b[i * 2] + nm[i * 2] * off;
-        p[i * 2 + 1] = b[i * 2 + 1] + nm[i * 2 + 1] * off;
+        q[i * 2] = b[i * 2] + nm[i * 2] * off;
+        q[i * 2 + 1] = b[i * 2 + 1] + nm[i * 2 + 1] * off;
       }
     }
     function addPoly(th, from, to) {
-      var p = th.pts;
-      ctx.moveTo(p[from * 2], p[from * 2 + 1]);
-      for (var i = from + 1; i <= to; i++) ctx.lineTo(p[i * 2], p[i * 2 + 1]);
+      var q = th.pts;
+      ctx.moveTo(q[from * 2], q[from * 2 + 1]);
+      for (var i = from + 1; i <= to; i++) ctx.lineTo(q[i * 2], q[i * 2 + 1]);
     }
     function strokeSet(list, rgb, a, px) {
       if (!list.length) return;
@@ -593,6 +844,17 @@
       ctx.lineWidth = px / view.k;
       ctx.stroke();
     }
+    function blobPath(c, t) {
+      var n = 56;
+      ctx.beginPath();
+      for (var i = 0; i <= n; i++) {
+        var a = i / n * 6.283;
+        var rr = c.r * (1 + 0.055 * Math.sin(3 * a + c.seed + (reduce ? 0 : t * 0.35)) + 0.035 * Math.sin(5 * a - c.seed * 2 - (reduce ? 0 : t * 0.22)));
+        var x = c.x + Math.cos(a) * rr, y = c.y + Math.sin(a) * rr;
+        if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      }
+      ctx.closePath();
+    }
 
     function draw(now) {
       var t = now / 1000, k = view.k;
@@ -601,41 +863,40 @@
       ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * view.x, dpr * view.y);
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
-      // shadow under the stem tip
-      ctx.save();
-      ctx.translate(TIP.x, TIP.y + 26); ctx.scale(1, 0.12);
-      var sg = ctx.createRadialGradient(0, 0, 0, 0, 0, 160);
-      sg.addColorStop(0, 'rgba(' + C.shadow + ',.22)'); sg.addColorStop(1, 'rgba(' + C.shadow + ',0)');
-      ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(0, 0, 160, 0, 6.283); ctx.fill();
-      ctx.restore();
+      // overview cells
+      if (slice === 'overview') {
+        geo.clusters.forEach(function (c) {
+          var active = !filtersOn() && !focusId() && !pathSel ? 1 : (stageOn() && ui.sysStage === c.stage ? 1.4 : (focusId() || pathSel || filtersOn() ? 0.55 : 1));
+          var gr = ctx.createRadialGradient(c.x, c.y, c.r * 0.1, c.x, c.y, c.r * 1.1);
+          gr.addColorStop(0, 'rgba(' + c.rgb + ',' + (0.13 * active) + ')'); gr.addColorStop(1, 'rgba(' + c.rgb + ',' + (0.04 * active) + ')');
+          blobPath(c, t); ctx.fillStyle = gr; ctx.fill();
+          ctx.strokeStyle = 'rgba(' + c.rgb + ',' + (0.35 * active) + ')'; ctx.lineWidth = 1.2 / k; ctx.setLineDash([4 / k, 6 / k]); ctx.stroke(); ctx.setLineDash([]);
+        });
+      }
 
-      threads.forEach(function (th) { undulate(th, t); });
-      var focus = !!(focusId() || pathSel || stageOn());
-      var norm = [], normF = [], dim = [], hls = [];
-      edges.forEach(function (e) {
-        var s = edgeStyle(e);
-        if (!s) norm.push(e.th); else if (s.dim) dim.push(e.th); else hls.push({ th: e.th, s: s });
-      });
-      var selN = ui.sysNode || hoverId;
-      fibers.forEach(function (th) {
-        if (!focus) { normF.push(th); return; }
-        var ns = nodeState(th.node);
-        if (selN && th.node.id === selN) hls.push({ th: th, s: { rgb: C.glow, a: 0.55, hl: true, fiber: true } });
-        else if (ns.on && !ns.sel) normF.push(th);
-        else dim.push(th);
+      geo.threads.forEach(function (th) { undulate(th, t); });
+      var norm = [], dim = [], fib = [], hls = [];
+      var focus = !!(focusId() || pathSel || filtersOn());
+      geo.threads.forEach(function (th) {
+        if (th.kind === 'fiber') {
+          if (!focus) fib.push(th);
+          else if (stageOn() && th.stage === ui.sysStage) hls.push({ th: th, s: { rgb: hexRgb(STAGE_C[th.stage]), a: 0.45, hl: true, fiber: true } });
+          else dim.push(th);
+          return;
+        }
+        var s = threadStyle(th);
+        if (!s) norm.push(th); else if (s.dim) dim.push(th); else hls.push({ th: th, s: s });
       });
       strokeSet(dim, C.ink, C.dimA, 0.8);
-      strokeSet(normF, C.ink, focus ? C.fiberA * 0.7 : C.fiberA, 0.75);
+      strokeSet(fib, C.ink, C.fiberA, 0.8);
       strokeSet(norm, C.ink, C.baseA, 1);
-
       ctx.globalCompositeOperation = C.comp;
       hls.forEach(function (h) {
         ctx.beginPath(); addPoly(h.th, 0, NPT - 1);
-        ctx.strokeStyle = 'rgba(' + h.s.rgb + ',' + (h.s.a * 0.16) + ')'; ctx.lineWidth = (h.s.fiber ? 3 : 5) / k; ctx.stroke();
-        ctx.strokeStyle = 'rgba(' + h.s.rgb + ',' + h.s.a + ')'; ctx.lineWidth = (h.s.fiber ? 0.9 : 1.2 + h.th.w * 0.6) / k; ctx.stroke();
+        if (!h.s.soft) { ctx.strokeStyle = 'rgba(' + h.s.rgb + ',' + (h.s.a * 0.16) + ')'; ctx.lineWidth = (h.s.fiber ? 3 : 5) / k; ctx.stroke(); }
+        ctx.strokeStyle = 'rgba(' + h.s.rgb + ',' + h.s.a + ')'; ctx.lineWidth = (h.s.fiber ? 0.9 : 1.1 + h.th.w * 0.55) / k; ctx.stroke();
       });
 
-      // pulses travelling along threads
       pulses = pulses.filter(function (pl) {
         var q = (now - pl.start) / pl.dur;
         if (q < 0) return true;
@@ -643,15 +904,15 @@
         var s = q < 0.5 ? 2 * q * q : 1 - Math.pow(-2 * q + 2, 2) / 2;
         var head = s * (NPT - 1), hi = Math.min(NPT - 1, Math.ceil(head)), lo = Math.max(0, Math.floor(head - pl.tail));
         if (hi <= lo) return true;
-        var p = pl.th.pts, fade = q < 0.12 ? q / 0.12 : q > 0.88 ? (1 - q) / 0.12 : 1;
-        var g = ctx.createLinearGradient(p[lo * 2], p[lo * 2 + 1], p[hi * 2], p[hi * 2 + 1]);
-        g.addColorStop(0, 'rgba(' + pl.rgb + ',0)'); g.addColorStop(1, 'rgba(' + pl.rgb + ',' + (pl.a * fade) + ')');
+        var pt = pl.th.pts, fade = q < 0.12 ? q / 0.12 : q > 0.88 ? (1 - q) / 0.12 : 1;
+        var gg = ctx.createLinearGradient(pt[lo * 2], pt[lo * 2 + 1], pt[hi * 2], pt[hi * 2 + 1]);
+        gg.addColorStop(0, 'rgba(' + pl.rgb + ',0)'); gg.addColorStop(1, 'rgba(' + pl.rgb + ',' + (pl.a * fade) + ')');
         ctx.beginPath(); addPoly(pl.th, lo, hi);
-        ctx.strokeStyle = g;
+        ctx.strokeStyle = gg;
         ctx.globalAlpha = 0.22; ctx.lineWidth = 7 / k; ctx.stroke();
         ctx.globalAlpha = 0.55; ctx.lineWidth = 3.2 / k; ctx.stroke();
         ctx.globalAlpha = 1; ctx.lineWidth = 1.5 / k; ctx.stroke();
-        var hx = p[hi * 2], hy = p[hi * 2 + 1], rr = 9 / k;
+        var hx = pt[hi * 2], hy = pt[hi * 2 + 1], rr = 9 / k;
         var hg = ctx.createRadialGradient(hx, hy, 0, hx, hy, rr);
         hg.addColorStop(0, 'rgba(' + pl.rgb + ',' + (0.9 * fade * pl.a) + ')'); hg.addColorStop(1, 'rgba(' + pl.rgb + ',0)');
         ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(hx, hy, rr, 0, 6.283); ctx.fill();
@@ -659,43 +920,86 @@
       });
       ctx.globalCompositeOperation = 'source-over';
 
-      // nodes + labels in screen space
+      if (slice === 'money') drawBoxes(t); else drawDots(t);
+      drawTitles();
+    }
+
+    function drawTitles() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      var p = ui.sysProject ? BM.project(ui.sysProject) : null;
-      var narrow = W < 900, showAll = k / fitK >= (narrow ? 1.8 : 1.1);
-      NODES.forEach(function (n) {
-        var st = nodeState(n);
-        var sx = view.x + n.x * k, sy = view.y + n.y * k;
-        if (sx < -200 || sx > W + 200 || sy < -100 || sy > H + 100) return;
-        var rs = n.r * clamp(Math.pow(k / fitK, 0.5), 0.75, 1.9) * (W < 600 ? 0.6 : 1);
-        var breathe = reduce ? 0 : Math.sin(t * 2.2 + n.x * 0.01) * 0.5 + 0.5;
-        var gc = st.eff != null ? (st.good ? C.good : C.bad) : LC[n.layer];
-        var ga = st.dim ? 0.06 : st.sel ? 0.55 : st.eff != null ? 0.25 + Math.abs(st.eff) * 0.4 : (focus && st.on ? 0.4 : 0.22 + breathe * 0.08);
+      ctx.textBaseline = 'bottom';
+      if (slice === 'overview') {
+        geo.clusters.forEach(function (c) {
+          var dx = Math.cos(c.ang), dy = Math.sin(c.ang);
+          var wx = c.stage === 'brand' ? c.x : c.x + dx * (c.r + 26), wy = c.stage === 'brand' ? c.y - c.r - 6 : c.y + dy * (c.r + 26) * 0.9 - (dy > 0.3 ? -16 : 0);
+          var sx = view.x + wx * view.k, sy = view.y + wy * view.k;
+          ctx.font = '700 ' + (11.5 * clamp(Math.sqrt(view.k / 0.6), 0.85, 1.25)).toFixed(1) + 'px Onest, sans-serif';
+          ctx.textAlign = 'center';
+          var txt = c.title.toUpperCase().split('').join(' ');
+          ctx.lineWidth = 4; ctx.strokeStyle = C.halo; ctx.strokeText(txt, sx, sy);
+          ctx.fillStyle = 'rgb(' + c.rgb + ')';
+          ctx.globalAlpha = stageOn() && ui.sysStage !== c.stage ? 0.4 : 1;
+          ctx.fillText(txt, sx, sy); ctx.globalAlpha = 1;
+        });
+      } else {
+        geo.columns.forEach(function (col) {
+          var sx = view.x + col.x * view.k + (slice === 'money' ? 0 : 0), sy = view.y + col.top * view.k - (slice === 'money' ? 10 : 34);
+          ctx.font = '700 11.5px Onest, sans-serif';
+          ctx.textAlign = slice === 'money' ? 'left' : 'center';
+          var txt = col.title.toUpperCase();
+          ctx.lineWidth = 4; ctx.strokeStyle = C.halo; ctx.strokeText(txt, sx, sy);
+          ctx.fillStyle = C.muted; ctx.fillText(txt, sx, sy);
+        });
+      }
+    }
+
+    function drawDots(t) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      var k = view.k, narrow = W < 900;
+      var showAll = slice === 'cause' ? true : k / fitK >= (narrow ? 1.8 : 1.15);
+      var focus = !!(focusId() || pathSel || filtersOn());
+      geo.items.forEach(function (it) {
+        var st = itemState(it), n = it.n;
+        var sx = view.x + it.x * k, sy = view.y + it.y * k;
+        if (sx < -220 || sx > W + 220 || sy < -120 || sy > H + 120) return;
+        var rs = it.r * clamp(Math.pow(k / fitK, 0.5), 0.75, 1.9) * (W < 600 ? 0.65 : 1);
+        var breathe = reduce ? 0 : Math.sin(t * 2.2 + it.x * 0.01) * 0.5 + 0.5;
+        var lc = hexRgb(STAGE_C[clusterOf(n)]);
+        var gc = st.eff != null ? (st.good ? C.good : C.bad) : lc;
+        var ga = st.dim ? 0.05 : st.sel ? 0.55 : st.eff != null ? 0.25 + Math.abs(st.eff) * 0.4 : (focus && st.on ? 0.42 : 0.24 + breathe * 0.08);
         var gr = rs * (st.sel ? 4.2 + breathe * 0.8 : 3.2);
         var grd = ctx.createRadialGradient(sx, sy, 0, sx, sy, gr);
         grd.addColorStop(0, 'rgba(' + gc + ',' + ga + ')'); grd.addColorStop(1, 'rgba(' + gc + ',0)');
         ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(sx, sy, gr, 0, 6.283); ctx.fill();
-        ctx.globalAlpha = st.dim ? 0.3 : 1;
-        ctx.fillStyle = C.node; ctx.beginPath(); ctx.arc(sx, sy, rs, 0, 6.283); ctx.fill();
+        ctx.globalAlpha = st.dim ? 0.28 : 1;
+        if (n.layer === 0) { ctx.fillStyle = dark ? '#171C16' : '#F4F5F1'; ctx.beginPath(); ctx.arc(sx, sy, rs, 0, 6.283); ctx.fill(); ctx.strokeStyle = C.node; ctx.lineWidth = 2; ctx.stroke(); }
+        else { ctx.fillStyle = C.node; ctx.beginPath(); ctx.arc(sx, sy, rs, 0, 6.283); ctx.fill(); }
         if (st.sel) { ctx.strokeStyle = 'rgba(' + C.glow + ',.95)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sx, sy, rs + 4.5 + breathe * 1.5, 0, 6.283); ctx.stroke(); }
-        var h = p ? health(n.id, p) : null;
+        var h = hOf(it);
         if (h && h.level) {
           ctx.fillStyle = h.level === 'good' ? 'rgb(' + C.good + ')' : h.level === 'mid' ? '#C8961F' : 'rgb(' + C.bad + ')';
           ctx.strokeStyle = dark ? '#101410' : '#fff'; ctx.lineWidth = 1.5;
           ctx.beginPath(); ctx.arc(sx + rs * 0.85, sy - rs * 0.85, 3.6, 0, 6.283); ctx.fill(); ctx.stroke();
         }
-        if (!(showAll || (!narrow && (n.layer === 0 || n.layer === 1)) || n.layer === 4 || st.on || st.sel || n.id === hoverId) || (focus && st.dim && !showAll)) { ctx.globalAlpha = 1; return; }
-        var dx = n.x - CORE.x, dy = n.y - (CORE.y - 40), dl = Math.sqrt(dx * dx + dy * dy) || 1, ux = dx / dl, uy = dy / dl;
+        var important = n.layer === 4 || (!narrow && (n.layer === 0 || n.layer === 1));
+        if (!(showAll || important || st.on || st.sel || it.id === hoverId) || (focus && st.dim && !showAll)) { ctx.globalAlpha = 1; return; }
         var lx, ly, al, bl;
-        if (n.layer === 4) { lx = sx + (n.x < 0 ? -1 : 1) * (rs + 8); ly = sy; al = n.x < 0 ? 'right' : 'left'; bl = 'middle'; }
+        if (slice === 'cause') {
+          if (it.col < 0) { lx = sx - rs - 8; ly = sy; al = 'right'; bl = 'middle'; }
+          else if (it.col > 0) { lx = sx + rs + 8; ly = sy; al = 'left'; bl = 'middle'; }
+          else { lx = sx; ly = sy + rs + 10; al = 'center'; bl = 'top'; }
+        } else if (n.layer === 4) { lx = sx + (it.x < 0 ? -1 : 1) * (rs + 8); ly = sy; al = it.x < 0 ? 'right' : 'left'; bl = 'middle'; }
         else {
-          lx = sx + ux * (rs + 7); ly = sy + uy * (rs + 7);
-          al = ux < -0.3 ? 'right' : ux > 0.3 ? 'left' : 'center';
-          bl = uy < -0.35 ? 'bottom' : uy > 0.35 ? 'top' : 'middle';
+          var c = geo.clusters.filter(function (cc) { return cc.stage === it.cluster; })[0];
+          var dx = it.x - c.x, dy = it.y - c.y, dl = Math.sqrt(dx * dx + dy * dy);
+          if (dl < 20) { dx = Math.cos(c.ang); dy = Math.sin(c.ang); dl = 1; }
+          var ux = dx / dl, uy = dy / dl;
+          lx = sx + ux * (rs + 6); ly = sy + uy * (rs + 6);
+          al = ux < -0.35 ? 'right' : ux > 0.35 ? 'left' : 'center';
+          bl = uy < -0.4 ? 'bottom' : uy > 0.4 ? 'top' : 'middle';
         }
+        var fs = slice === 'cause' ? (it.col === 0 ? 1.25 : 1) : clamp(Math.sqrt(k / 0.75), 0.84, 1.12);
         var label = (st.eff != null ? (st.eff > 0 ? '↑ ' : '↓ ') : '') + n.label;
-        var fs = clamp(Math.sqrt(k / 0.75), 0.84, 1.12);
-        ctx.font = (n.layer === 4 ? '700 ' + (14 * fs).toFixed(1) : (st.sel ? '700 ' : '500 ') + (12.5 * fs).toFixed(1)) + 'px Onest, system-ui, sans-serif';
+        ctx.font = (n.layer === 4 || st.sel ? '700 ' : '500 ') + (12.5 * fs * (n.layer === 4 ? 1.1 : 1)).toFixed(1) + 'px Onest, system-ui, sans-serif';
         ctx.textAlign = al; ctx.textBaseline = bl;
         ctx.lineWidth = 4; ctx.strokeStyle = C.halo; ctx.strokeText(label, lx, ly);
         ctx.fillStyle = st.eff != null ? 'rgb(' + (st.good ? C.good : C.bad) + ')' : C.label;
@@ -705,43 +1009,110 @@
       });
     }
 
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+    }
+    function drawBoxes(t) {
+      ctx.setTransform(dpr * view.k, 0, 0, dpr * view.k, dpr * view.x, dpr * view.y);
+      geo.items.forEach(function (it) {
+        var st = itemState(it), m = it.m, h = hOf(it), x = it.x, y = it.y - it.h / 2, w = it.w, hh = it.h;
+        ctx.globalAlpha = st.dim ? 0.3 : 1;
+        if (st.sel) {
+          var gg = ctx.createRadialGradient(x + w / 2, it.y, 10, x + w / 2, it.y, w * 0.8);
+          gg.addColorStop(0, 'rgba(' + C.glow + ',.3)'); gg.addColorStop(1, 'rgba(' + C.glow + ',0)');
+          ctx.fillStyle = gg; ctx.fillRect(x - w * 0.3, it.y - w * 0.8, w * 1.6, w * 1.6);
+        }
+        roundRect(x, y, w, hh, 14);
+        ctx.fillStyle = C.box; ctx.fill();
+        ctx.lineWidth = st.sel ? 2 : 1; ctx.strokeStyle = st.sel ? 'rgba(' + C.glow + ',.95)' : C.boxLine; ctx.stroke();
+        if (h && h.level) {
+          ctx.fillStyle = h.level === 'good' ? 'rgb(' + C.good + ')' : h.level === 'mid' ? '#C8961F' : 'rgb(' + C.bad + ')';
+          roundRect(x + 4, y + 8, 3.5, hh - 16, 2); ctx.fill();
+        }
+        var tx = x + 14;
+        if (m.op) {
+          var oc = m.op === '−' || m.op === '÷' ? C.neg : C.glow;
+          ctx.fillStyle = 'rgba(' + oc + ',.16)'; ctx.beginPath(); ctx.arc(x + 22, it.y, 11, 0, 6.283); ctx.fill();
+          ctx.fillStyle = 'rgb(' + oc + ')'; ctx.font = '700 14px Onest, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(m.op, x + 22, it.y + 0.5);
+          tx = x + 40;
+        }
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = C.label; ctx.font = (it.depth === 0 ? '700 15px ' : '600 14px ') + 'Onest, sans-serif';
+        ctx.fillText(m.label, tx, it.y - 3);
+        ctx.fillStyle = h && h.text && !m.children ? (h.level === 'bad' ? 'rgb(' + C.bad + ')' : C.muted) : C.muted;
+        ctx.font = '400 11.5px Onest, sans-serif';
+        var sub = h && h.text ? h.text : (m.formula || '');
+        while (ctx.measureText(sub).width > w - (tx - x) - 10 && sub.length > 4) sub = sub.slice(0, -2);
+        if (sub !== (h && h.text ? h.text : (m.formula || ''))) sub = sub.trim() + '…';
+        ctx.fillText(sub, tx, it.y + 13);
+        ctx.globalAlpha = 1;
+      });
+    }
+
     // ----- pulses -----
     function spawn(th, delay, rgb, a, dur, tail) {
       pulses.push({ th: th, start: performance.now() + (delay || 0), dur: dur || 1500, rgb: rgb || C.glow, a: a == null ? 1 : a, tail: tail || 11 });
     }
+    function threadsWhere(fn) { return geo.threads.filter(fn); }
     function cycle(now) {
       if (pathSel) {
         pathSel.forEach(function (nid, i) {
           if (!i) return;
-          edges.forEach(function (e) { if (e.from === pathSel[i - 1] && e.to === nid) spawn(e.th, (i - 1) * 650, e.sign > 0 ? C.glow : C.neg, 1, 1100, 13); });
+          threadsWhere(function (th) { return th.kind === 'edge' && th.from === pathSel[i - 1] && th.to === nid; })
+            .forEach(function (th) { spawn(th, (i - 1) * 650, th.e.sign > 0 ? C.glow : C.neg, 1, 1100, 13); });
         });
         nextCycle = now + 650 * pathSel.length + 1600;
-      } else if (ui.sysNode && ui.sysMode === 'sim' && lastSim) {
-        var maxD = 0;
-        Object.keys(lastSim.used).forEach(function (i) {
-          var e = edges[i], v = lastSim.eff[e.to] || 0, d = lastSim.used[i];
-          maxD = Math.max(maxD, d);
-          spawn(e.th, d * 560, v * byId[e.to].polarity > 0 ? C.good : C.bad, 0.95, 1150, 12);
+        return;
+      }
+      if (slice === 'money') {
+        var sel = ui.sysNode;
+        threadsWhere(function (th) { return !sel || th.to === sel || th.from === sel || isAncestor(sel, th.from); }).forEach(function (th) {
+          var d = MONEY_BY[th.from] ? geo.byId[th.from].depth : 1;
+          spawn(th, (6 - d) * 380 + Math.random() * 200, th.op === '−' || th.op === '÷' ? C.neg : C.glow, sel ? 1 : 0.7, 1300, 12);
         });
-        nextCycle = now + (maxD + 1) * 560 + 1700;
-      } else if (ui.sysNode) {
-        edges.forEach(function (e) {
-          if (e.from === ui.sysNode) spawn(e.th, Math.random() * 250, e.sign > 0 ? C.glow : C.neg, 1, 1500);
-          if (e.to === ui.sysNode) spawn(e.th, 500 + Math.random() * 300, e.sign > 0 ? C.inC : C.neg, 0.9, 1500);
+        nextCycle = now + 3400;
+        return;
+      }
+      if (slice === 'cause') {
+        if (ui.sysMode === 'sim' && lastSim) {
+          var maxD = 0;
+          Object.keys(lastSim.used).forEach(function (i) {
+            var e = edges[i], d = lastSim.used[i];
+            threadsWhere(function (th) { return th.e === e; }).forEach(function (th) {
+              maxD = Math.max(maxD, d);
+              var v = lastSim.eff[e.to] || 0;
+              spawn(th, d * 560, v * byId[e.to].polarity > 0 ? C.good : C.bad, 0.95, 1150, 12);
+            });
+          });
+          nextCycle = now + (maxD + 1) * 560 + 1700;
+        } else {
+          threadsWhere(function (th) { return !th.aux; }).forEach(function (th) {
+            var c = geo.byId[th.from].col;
+            spawn(th, (c + 2) * 520 + Math.random() * 200, th.e.sign > 0 ? (geo.byId[th.to].col <= 0 ? C.inC : C.glow) : C.neg, 1, 1300, 12);
+          });
+          nextCycle = now + 3600;
+        }
+        return;
+      }
+      if (ui.sysNode) {
+        threadsWhere(function (th) { return th.kind === 'edge' && (th.from === ui.sysNode || th.to === ui.sysNode); }).forEach(function (th) {
+          var out = th.from === ui.sysNode;
+          spawn(th, out ? Math.random() * 250 : 500 + Math.random() * 300, th.e.sign > 0 ? (out ? C.glow : C.inC) : C.neg, 1, 1500);
         });
-        byId[ui.sysNode].fibers.forEach(function (th, j) { spawn(th, 900 + j * 200, C.glow, 0.7, 2000, 14); });
         nextCycle = now + 2600;
       }
     }
     function ambient(now) {
-      if (focusId() || pathSel || pulses.length > 16 || now - lastAmb < 170) return;
+      if (slice !== 'overview' || ui.sysNode || hoverId || pathSel || pulses.length > 16 || now - lastAmb < 170) return;
       lastAmb = now;
       var pool;
-      if (stageOn()) {
-        pool = edges.filter(function (e) { return inStage(byId[e.from]) && inStage(byId[e.to]); }).map(function (e) { return e.th; });
-        if (!pool.length) pool = edges.filter(function (e) { return inStage(byId[e.from]) || inStage(byId[e.to]); }).map(function (e) { return e.th; });
-      } else pool = Math.random() < 0.55 ? fibers : threads;
-      spawn(pool[Math.floor(Math.random() * pool.length)], 0, C.glow, dark ? 0.75 : 0.6, 1900 + Math.random() * 1000, 12);
+      if (filtersOn()) pool = geo.threads.filter(function (th) { return th.kind === 'edge' && passes(geo.byId[th.from]) && passes(geo.byId[th.to]); });
+      else pool = Math.random() < 0.4 ? geo.fibers : geo.threads;
+      if (!pool.length) return;
+      var th = pool[Math.floor(Math.random() * pool.length)];
+      spawn(th, 0, th.kind === 'fiber' ? hexRgb(STAGE_C[th.stage]) : C.glow, dark ? 0.75 : 0.6, 1900 + Math.random() * 1000, 12);
     }
 
     // ----- loop -----
@@ -752,10 +1123,11 @@
         var q = Math.min(1, (now - anim.start) / anim.dur), e = 1 - Math.pow(1 - q, 3);
         view = { k: anim.from.k + (anim.to.k - anim.from.k) * e, x: anim.from.x + (anim.to.x - anim.from.x) * e, y: anim.from.y + (anim.to.y - anim.from.y) * e };
         if (q >= 1) { view = anim.to; anim = null; }
-        ui.sysView = view; showZoom();
+        showZoom();
       }
       if (!reduce) {
-        if (now >= nextCycle && (ui.sysNode || pathSel)) cycle(now);
+        var cyc = pathSel || ui.sysNode || slice !== 'overview';
+        if (cyc && now >= nextCycle) cycle(now);
         ambient(now);
       }
       draw(now);
@@ -763,15 +1135,29 @@
     }
     function requestDraw() { if (!raf && ctl) raf = requestAnimationFrame(frame); }
 
-    // ----- dock (details panel) -----
+    // ----- dock -----
     function relItem(e, other) {
       var n = byId[other];
       return '<li><button type="button" class="sys-rel" data-sys-node="' + n.id + '"><span class="sys-rel-sign ' + (e.sign > 0 ? 'pos' : 'neg') + '" aria-hidden="true">' + (e.sign > 0 ? '+' : '−') + '</span>' +
         '<span><b>' + esc(n.label) + '</b><small>' + (e.sign > 0 ? 'усиливает' : 'снижает') + ' · ' + esc(e.why) + '</small></span></button></li>';
     }
     function closeBtn() { return '<button type="button" class="icon-btn sm" data-sys-close aria-label="Закрыть панель">' + icon('x', 'sm') + '</button>'; }
+    function nodeHead(n) {
+      var h = p ? health(n.id, p) : null;
+      return '<div class="sys-p-head"><span class="eyebrow"><i class="lg-dot" style="background:' + STAGE_C[clusterOf(n)] + '"></i>' + esc(LAYERS[n.layer].title) + ' · ' + esc(stageLabel[n.stage]) + '</span>' + closeBtn() + '</div>' +
+        '<h2>' + esc(n.label) + '</h2><p class="small" style="color:var(--primary-ink);font-weight:600;margin-top:4px">' + (n.polarity > 0 ? 'Чем выше — тем лучше' : 'Чем ниже — тем лучше') + '</p>' +
+        '<p style="margin-top:10px">' + esc(n.desc) + '</p>' +
+        '<div class="sys-measure"><small>Где смотреть и как считать</small>' + esc(n.measure) + '</div>' +
+        (h ? '<div class="sys-health h-' + (h.level || 'none') + '"><small>' + esc(p.name) + '</small>' + esc(h.text) + '</div>' : '');
+    }
+    function linksHtml(n) {
+      var outs = edges.filter(function (e) { return e.from === n.id; }).sort(function (a, b) { return b.w - a.w; });
+      var ins = edges.filter(function (e) { return e.to === n.id; }).sort(function (a, b) { return b.w - a.w; });
+      return '<h3 style="margin-top:16px">Влияет на · ' + outs.length + '</h3><ul class="sys-rels">' + outs.map(function (e) { return relItem(e, e.to); }).join('') + '</ul>' +
+        '<h3 style="margin-top:14px">Зависит от · ' + ins.length + '</h3><ul class="sys-rels">' + (ins.length ? ins.map(function (e) { return relItem(e, e.from); }).join('') : '<li class="small muted" style="padding:8px">Стартовая точка системы — задаётся решениями команды.</li>') + '</ul>';
+    }
     function renderDock() {
-      var p = ui.sysProject ? BM.project(ui.sysProject) : null, html = '';
+      var html = '';
       if (pathSel) {
         var pr = PRESETS.filter(function (x) { return x.path === pathSel; })[0];
         html = '<div class="sys-p-head"><span class="eyebrow">Цепочка</span>' + closeBtn() + '</div><h2>' + esc(pr.title) + '</h2><p class="muted small" style="margin-top:6px">' + esc(pr.text) + '</p>' +
@@ -779,74 +1165,86 @@
             var e = i ? edges.filter(function (x) { return x.from === pathSel[i - 1] && x.to === nid; })[0] : null;
             return '<li><button type="button" class="sys-rel" data-sys-node="' + nid + '"><span><b>' + esc(byId[nid].label) + '</b><small>' + (e ? esc(e.why) : 'старт') + '</small></span></button></li>';
           }).join('') + '</ol>';
-      } else if (ui.sysNode) {
-        var n = byId[ui.sysNode], h = health(n.id, p);
-        var head = '<div class="sys-p-head"><span class="eyebrow"><i class="lg-dot l' + n.layer + '"></i>' + esc(LAYERS[n.layer].title) + ' · ' + esc(stageLabel[n.stage]) + '</span>' + closeBtn() + '</div>' +
-          '<h2>' + esc(n.label) + '</h2><p class="small" style="color:var(--primary-ink);font-weight:600;margin-top:4px">' + (n.polarity > 0 ? 'Чем выше — тем лучше' : 'Чем ниже — тем лучше') + '</p>' +
-          '<p style="margin-top:10px">' + esc(n.desc) + '</p>' +
-          '<div class="sys-measure"><small>Где смотреть и как считать</small>' + esc(n.measure) + '</div>' +
-          (h ? '<div class="sys-health h-' + (h.level || 'none') + '"><small>' + esc(p.name) + '</small>' + esc(h.text) + '</div>' : '');
-        if (ui.sysMode === 'sim') {
-          var sim = lastSim || simulate(n.id, ui.sysImpulse);
-          var list = Object.keys(sim.eff).filter(function (k) { return k !== n.id && Math.abs(sim.eff[k]) >= 0.04; })
-            .sort(function (a, b) { return Math.abs(sim.eff[b]) - Math.abs(sim.eff[a]); }).slice(0, 10);
-          html = head + '<div class="sys-seg" role="group" aria-label="Направление" style="margin-top:14px"><button type="button" data-sys-impulse="1" aria-pressed="' + (ui.sysImpulse > 0) + '">Если вырастет ↑</button><button type="button" data-sys-impulse="-1" aria-pressed="' + (ui.sysImpulse < 0) + '">Если снизится ↓</button></div>' +
-            '<h3 style="margin-top:16px">Что изменится</h3><ul class="sys-effects">' + list.map(function (k) {
-              var v = sim.eff[k], good = v * byId[k].polarity > 0;
-              return '<li><button type="button" class="sys-rel" data-sys-node="' + k + '"><span class="sys-eff-arrow ' + (good ? 'good' : 'bad') + '" aria-hidden="true">' + (v > 0 ? '↑' : '↓') + '</span><span style="flex:1"><b>' + esc(byId[k].label) + '</b><small>' + (v > 0 ? 'растёт' : 'снижается') + ' · ' + (good ? 'хорошо' : 'плохо') + '</small>' +
-                '<span class="sys-bar ' + (good ? 'good' : 'bad') + '"><i style="width:' + Math.round(Math.abs(v) * 100) + '%"></i></span></span></button></li>';
-            }).join('') + '</ul><p class="small muted" style="margin-top:10px">Сила влияния ослабевает с каждым шагом цепочки. Это модель причинно-следственных связей, а не прогноз в цифрах.</p>';
-        } else {
-          var outs = edges.filter(function (e) { return e.from === n.id; }).sort(function (a, b) { return b.w - a.w; });
-          var ins = edges.filter(function (e) { return e.to === n.id; }).sort(function (a, b) { return b.w - a.w; });
-          html = head +
-            '<h3 style="margin-top:16px">Влияет на · ' + outs.length + '</h3><ul class="sys-rels">' + outs.map(function (e) { return relItem(e, e.to); }).join('') + '</ul>' +
-            '<h3 style="margin-top:14px">Зависит от · ' + ins.length + '</h3><ul class="sys-rels">' + (ins.length ? ins.map(function (e) { return relItem(e, e.from); }).join('') : '<li class="small muted" style="padding:8px">Стартовая точка системы — задаётся решениями команды.</li>') + '</ul>' +
-            '<button type="button" class="btn soft block" style="margin-top:14px" data-sys-mode="sim">' + icon('sparkle', 'sm') + 'Смоделировать влияние</button>';
-        }
       } else if (ui.sysDock === 'list') {
-        html = '<div class="sys-p-head"><h2>Все узлы</h2>' + closeBtn() + '</div>' + LAYERS.map(function (l) {
-          return '<h3 class="sys-list-h"><i class="lg-dot l' + l.id + '"></i>' + esc(l.title) + '</h3><ul class="sys-rels">' + ORDER[l.id].map(function (id) {
-            return '<li><button type="button" class="sys-rel" data-sys-node="' + id + '"><span><b>' + esc(byId[id].label) + '</b><small>' + esc(byId[id].desc.split('.')[0]) + '</small></span></button></li>';
+        html = '<div class="sys-p-head"><h2>Все узлы</h2>' + closeBtn() + '</div>' + CLUSTERS.concat(['brand']).map(function (st) {
+          var ns = NODES.filter(function (n) { return clusterOf(n) === st; });
+          return '<h3 class="sys-list-h"><i class="lg-dot" style="background:' + STAGE_C[st] + '"></i>' + esc(CLUSTER_TITLE[st]) + '</h3><ul class="sys-rels">' + ns.map(function (n) {
+            return '<li><button type="button" class="sys-rel" data-sys-node="' + n.id + '"><span><b>' + esc(n.label) + '</b><small>' + esc(LAYERS[n.layer].title) + ' · ' + esc(n.desc.split('.')[0]) + '</small></span></button></li>';
           }).join('') + '</ul>';
         }).join('');
       } else if (ui.sysDock === 'presets') {
-        html = '<div class="sys-p-head"><h2>Сценарии</h2>' + closeBtn() + '</div><div class="sys-measure" style="margin:0 0 12px"><small>Как читать карту</small>Воронка AARRR: привлечение → активация → удержание → рекомендации → монетизация. Фундамент питает все этапы, бренд и контент проходят через всю воронку. Северная звезда товарного бизнеса на маркетплейсе — <b>LTV / CAC</b>, цель от 3 к 1.</div><p class="muted small" style="margin:0 0 12px">Выберите сценарий, этап воронки в фильтре сверху или нажмите на любую точку карты.</p><div class="stack" style="gap:8px">' +
-          PRESETS.map(function (x, i) { return '<button type="button" class="sys-preset" data-sys-preset="' + i + '"><b>' + esc(x.title) + '</b><small>' + esc(x.text) + '</small></button>'; }).join('') + '</div>';
+        html = '<div class="sys-p-head"><h2>Сценарии</h2>' + closeBtn() + '</div><div class="sys-measure" style="margin:0 0 12px"><small>Три среза одной системы</small><b>Обзор</b> — из чего состоит маркетинг. <b>Причины и следствия</b> — почему изменился показатель и что будет дальше. <b>Деньги</b> — какой рычаг сильнее двигает прибыль. Северная звезда товарного бизнеса — <b>LTV / CAC</b>, цель от 3 к 1.</div><div class="stack" style="gap:8px">' +
+          PRESETS.map(function (x, i) { return '<button type="button" class="sys-preset" data-sys-preset="' + i + '"><b>' + esc(x.title) + '</b><small>' + (x.path ? 'Обзор · ' : 'Причины и следствия · ') + esc(x.text) + '</small></button>'; }).join('') + '</div>';
+      } else if (slice === 'money' && ui.sysNode) {
+        var m = MONEY_BY[ui.sysNode], mv = moneyVal(m, p);
+        html = '<div class="sys-p-head"><span class="eyebrow">Деньги' + (m.op ? ' · ' + esc(m.op) : '') + '</span>' + closeBtn() + '</div><h2>' + esc(m.label) + '</h2>' +
+          (m.formula ? '<div class="sys-measure"><small>Формула</small>' + esc(m.formula) + '</div>' : '') +
+          (mv ? '<div class="sys-health h-' + (mv.level || 'none') + '"><small>' + esc(p.name) + '</small>' + esc(mv.text) + '</div>' : '') +
+          (m.desc ? '<p style="margin-top:12px">' + esc(m.desc) + '</p>' : (m.node ? '<p style="margin-top:12px">' + esc(byId[m.node].desc) + '</p>' : '')) +
+          (m.children ? '<h3 style="margin-top:16px">Из чего складывается</h3><ul class="sys-rels">' + m.children.map(function (c) { var cm = MONEY_BY[c]; return '<li><button type="button" class="sys-rel" data-sys-money="' + c + '"><span class="sys-rel-sign ' + (cm.op === '−' || cm.op === '÷' ? 'neg' : 'pos') + '">' + esc(cm.op || '') + '</span><span><b>' + esc(cm.label) + '</b><small>' + esc(cm.formula || '') + '</small></span></button></li>'; }).join('') + '</ul>' : '') +
+          (m.node ? '<button type="button" class="btn soft block" style="margin-top:14px" data-sys-cause="' + m.node + '">' + icon('arrowR', 'sm') + 'Что влияет на «' + esc(byId[m.node].label) + '»</button>' : '');
+      } else if (ui.sysNode && byId[ui.sysNode]) {
+        var n = byId[ui.sysNode];
+        if (slice === 'cause' && ui.sysMode === 'sim') {
+          var sim = lastSim || simulate(n.id, ui.sysImpulse);
+          var list = Object.keys(sim.eff).filter(function (k2) { return k2 !== n.id && Math.abs(sim.eff[k2]) >= 0.04; })
+            .sort(function (a, b) { return Math.abs(sim.eff[b]) - Math.abs(sim.eff[a]); }).slice(0, 10);
+          html = nodeHead(n) + '<div class="sys-seg" role="group" aria-label="Направление" style="margin-top:14px"><button type="button" data-sys-impulse="1" aria-pressed="' + (ui.sysImpulse > 0) + '">Если вырастет ↑</button><button type="button" data-sys-impulse="-1" aria-pressed="' + (ui.sysImpulse < 0) + '">Если снизится ↓</button></div>' +
+            '<h3 style="margin-top:16px">Что изменится</h3><ul class="sys-effects">' + list.map(function (k2) {
+              var v = sim.eff[k2], good = v * byId[k2].polarity > 0;
+              return '<li><button type="button" class="sys-rel" data-sys-node="' + k2 + '"><span class="sys-eff-arrow ' + (good ? 'good' : 'bad') + '" aria-hidden="true">' + (v > 0 ? '↑' : '↓') + '</span><span style="flex:1"><b>' + esc(byId[k2].label) + '</b><small>' + (v > 0 ? 'растёт' : 'снижается') + ' · ' + (good ? 'хорошо' : 'плохо') + '</small>' +
+                '<span class="sys-bar ' + (good ? 'good' : 'bad') + '"><i style="width:' + Math.round(Math.abs(v) * 100) + '%"></i></span></span></button></li>';
+            }).join('') + '</ul><p class="small muted" style="margin-top:10px">Сила влияния ослабевает с каждым шагом цепочки. Это модель причинно-следственных связей, а не прогноз в цифрах.</p>';
+        } else {
+          html = nodeHead(n) + (slice === 'overview' ? '<button type="button" class="btn primary block" style="margin-top:14px" data-sys-cause="' + n.id + '">' + icon('arrowR', 'sm') + 'Причины и следствия</button>' : '<button type="button" class="btn soft block" style="margin-top:14px" data-sys-mode="sim">' + icon('sparkle', 'sm') + 'Смоделировать влияние</button>') + linksHtml(n);
+        }
       }
-      var open = !!html;
-      var wasOpen = dock.classList.contains('open');
+      var wasOpen = dock.classList.contains('open'), open = !!html;
       dock.innerHTML = html;
       dock.classList.toggle('open', open);
-      if (wasOpen !== open && view && !userMoved) setView(fitView(), true);
       stage.classList.toggle('dock-open', open);
-      stage.querySelectorAll('[data-sys-dock]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.sysDock === ui.sysDock && !ui.sysNode && !pathSel); });
+      if (wasOpen !== open && view && !userMoved) setView(fitView(), true);
+      stage.querySelectorAll('[data-sys-dock]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.sysDock === ui.sysDock && !pathSel && !(ui.sysNode && slice !== 'cause')); });
       stage.querySelectorAll('.sys-hud [data-sys-mode]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.sysMode === ui.sysMode); });
+      var pb = stage.querySelector('[data-sys-problems]'); if (pb) pb.setAttribute('aria-pressed', probOn());
     }
 
     function refresh() {
-      lastSim = ui.sysNode && ui.sysMode === 'sim' ? simulate(ui.sysNode, ui.sysImpulse) : null;
+      lastSim = slice === 'cause' && ui.sysNode && ui.sysMode === 'sim' ? simulate(ui.sysNode, ui.sysImpulse) : null;
       renderDock();
-      pulses = [];
-      nextCycle = 0;
+      pulses = []; nextCycle = 0;
       requestDraw();
+    }
+    function goSlice(s, focus) {
+      ui.sysDock = null; pathSel = null;
+      var hash = s === 'cause' ? '#/system/cause/' + (focus || ui.sysFocus) : s === 'money' ? '#/system/money' : '#/system' + (focus ? '/' + focus : '');
+      history.replaceState(null, '', hash);
+      BM.render();
     }
     function select(id, center) {
       pathSel = null;
+      if (slice === 'cause') {
+        if (!id) { ui.sysDock = null; refresh(); return; }
+        ui.sysFocus = id; goSlice('cause', id); return;
+      }
       ui.sysNode = id;
-      if (!id && ui.sysDock === 'node') ui.sysDock = null;
-      if (id) ui.sysDock = 'node';
-      history.replaceState(null, '', '#/system' + (id ? '/' + id : ''));
+      if (id) ui.sysDock = null;
+      if (slice === 'overview') history.replaceState(null, '', '#/system' + (id ? '/' + id : ''));
       refresh();
-      if (id && center) centerOn(byId[id]);
+      if (id && center && geo.byId[id]) centerOn(geo.byId[id]);
     }
-    function nodeAt(x, y) {
+    function hit(x, y) {
       var best = null, bd = 1e9;
-      NODES.forEach(function (n) {
-        var sx = view.x + n.x * view.k, sy = view.y + n.y * view.k;
-        var rs = n.r * clamp(Math.pow(view.k / fitK, 0.5), 0.75, 1.9) * (W < 600 ? 0.6 : 1) + (W < 600 ? 12 : 10);
+      geo.items.forEach(function (it) {
+        if (it.box) {
+          var bx = view.x + it.x * view.k, by = view.y + (it.y - it.h / 2) * view.k;
+          if (x >= bx && x <= bx + it.w * view.k && y >= by && y <= by + it.h * view.k) { best = it; bd = 0; }
+          return;
+        }
+        var sx = view.x + it.x * view.k, sy = view.y + it.y * view.k;
+        var rs = it.r * clamp(Math.pow(view.k / fitK, 0.5), 0.75, 1.9) * (W < 600 ? 0.65 : 1) + (W < 600 ? 12 : 10);
         var d = Math.hypot(sx - x, sy - y);
-        if (d < rs && d < bd) { bd = d; best = n; }
+        if (d < rs && d < bd) { bd = d; best = it; }
       });
       return best;
     }
@@ -871,22 +1269,22 @@
       if (pinch && pointers.size === 2) {
         var ps = Array.from(pointers.values());
         var d = Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y), mx = (ps[0].x + ps[1].x) / 2, my = (ps[0].y + ps[1].y) / 2;
-        var k = clamp(pinch.k * d / (pinch.d || 1), fitK * 0.35, fitK * 6);
+        var k = clamp(pinch.k * d / (pinch.d || 1), fitK * 0.35, fitK * 7);
         var wx = (pinch.cx - pinch.vx) / pinch.k, wy = (pinch.cy - pinch.vy) / pinch.k;
-        markMoved(true);
+        userMoved = true;
         setView({ k: k, x: mx - wx * k, y: my - wy * k });
         return;
       }
       if (drag) {
         var dx = pt.x - drag.x, dy = pt.y - drag.y;
         if (!drag.moved && Math.hypot(dx, dy) > 5) { drag.moved = true; cv.classList.add('grabbing'); }
-        if (drag.moved) { markMoved(true); setView({ k: view.k, x: drag.vx + dx, y: drag.vy + dy }); }
+        if (drag.moved) { userMoved = true; setView({ k: view.k, x: drag.vx + dx, y: drag.vy + dy }); }
         return;
       }
       if (e.pointerType === 'mouse') {
-        var n = nodeAt(pt.x, pt.y), id = n ? n.id : null;
-        cv.classList.toggle('pointing', !!n);
-        if (id !== hoverId) { hoverId = id; if (!ui.sysNode && !pathSel) { nextCycle = 0; requestDraw(); } }
+        var it = hit(pt.x, pt.y), id = it ? it.id : null;
+        cv.classList.toggle('pointing', !!it);
+        if (id !== hoverId) { hoverId = id; nextCycle = 0; requestDraw(); }
       }
     }, sig);
     function up(e) {
@@ -894,9 +1292,11 @@
       pointers.delete(e.pointerId);
       if (pinch && pointers.size < 2) { pinch = null; drag = null; return; }
       if (drag && !drag.moved && e.type === 'pointerup') {
-        var n = nodeAt(pt.x, pt.y);
-        if (n) select(n.id === ui.sysNode ? null : n.id);
-        else if (ui.sysNode || pathSel) select(null);
+        var it = hit(pt.x, pt.y);
+        if (it) {
+          if (slice === 'cause') { if (it.id !== ui.sysNode) select(it.id); }
+          else select(it.id === ui.sysNode ? null : it.id);
+        } else if ((ui.sysNode && slice !== 'cause') || pathSel) select(null);
       }
       drag = null; cv.classList.remove('grabbing');
     }
@@ -915,41 +1315,63 @@
       var step = 80;
       if (e.key === '+' || e.key === '=') zoomAt(1.25, W / 2, H / 2, true);
       else if (e.key === '-' || e.key === '_') zoomAt(0.8, W / 2, H / 2, true);
-      else if (e.key === '0') { markMoved(false); setView(fitView(), true); }
-      else if (e.key === 'ArrowLeft') setView({ k: view.k, x: view.x + step, y: view.y }, true);
-      else if (e.key === 'ArrowRight') setView({ k: view.k, x: view.x - step, y: view.y }, true);
-      else if (e.key === 'ArrowUp') setView({ k: view.k, x: view.x, y: view.y + step }, true);
-      else if (e.key === 'ArrowDown') setView({ k: view.k, x: view.x, y: view.y - step }, true);
+      else if (e.key === '0') { userMoved = false; setView(fitView(), true); }
+      else if (e.key === 'ArrowLeft') { userMoved = true; setView({ k: view.k, x: view.x + step, y: view.y }, true); }
+      else if (e.key === 'ArrowRight') { userMoved = true; setView({ k: view.k, x: view.x - step, y: view.y }, true); }
+      else if (e.key === 'ArrowUp') { userMoved = true; setView({ k: view.k, x: view.x, y: view.y + step }, true); }
+      else if (e.key === 'ArrowDown') { userMoved = true; setView({ k: view.k, x: view.x, y: view.y - step }, true); }
       else return;
       e.preventDefault();
     }, sig);
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && (ui.sysNode || pathSel || ui.sysDock) && !document.querySelector('dialog[open]') && !document.fullscreenElement) { ui.sysDock = null; select(null); }
+      if (e.key !== 'Escape' || document.querySelector('dialog[open]') || document.fullscreenElement) return;
+      if (pathSel || ui.sysDock || (ui.sysNode && slice !== 'cause')) { ui.sysDock = null; select(null); }
     }, sig);
 
     stage.addEventListener('click', function (e) {
       var t;
-      if ((t = e.target.closest('[data-sys-node]'))) { select(t.dataset.sysNode, true); return; }
-      if ((t = e.target.closest('[data-sys-mode]'))) { ui.sysMode = t.dataset.sysMode; refresh(); return; }
+      if ((t = e.target.closest('[data-sys-slice]'))) { if (t.dataset.sysSlice !== slice) goSlice(t.dataset.sysSlice, t.dataset.sysSlice === 'cause' ? ui.sysFocus : null); return; }
+      if ((t = e.target.closest('[data-sys-cause]'))) { ui.sysFocus = t.dataset.sysCause; goSlice('cause', ui.sysFocus); return; }
+      if ((t = e.target.closest('[data-sys-money]'))) { ui.sysNode = t.dataset.sysMoney; refresh(); centerOn(geo.byId[ui.sysNode]); return; }
+      if ((t = e.target.closest('[data-sys-node]'))) {
+        var id = t.dataset.sysNode;
+        if (slice === 'money') { ui.sysFocus = id; goSlice('cause', id); return; }
+        ui.sysDock = null; select(id, true); return;
+      }
+      if ((t = e.target.closest('[data-sys-mode]'))) {
+        ui.sysMode = t.dataset.sysMode;
+        if (slice !== 'cause') { ui.sysFocus = ui.sysNode || ui.sysFocus; goSlice('cause', ui.sysFocus); return; }
+        refresh(); return;
+      }
       if ((t = e.target.closest('[data-sys-impulse]'))) { ui.sysImpulse = +t.dataset.sysImpulse; refresh(); return; }
-      if (e.target.closest('[data-sys-close]')) { ui.sysDock = null; if (ui.sysNode || pathSel) select(null); else refresh(); return; }
+      if (e.target.closest('[data-sys-close]')) {
+        if (ui.sysDock) { ui.sysDock = null; refresh(); return; }
+        if (slice === 'cause') { refresh(); dock.classList.remove('open'); stage.classList.remove('dock-open'); if (!userMoved) setView(fitView(), true); return; }
+        select(null); return;
+      }
+      if (e.target.closest('[data-sys-problems]')) { ui.sysProblems = !ui.sysProblems; refresh(); return; }
       if ((t = e.target.closest('[data-sys-dock]'))) {
         var want = t.dataset.sysDock;
-        pathSel = null; ui.sysNode = null; history.replaceState(null, '', '#/system');
+        pathSel = null;
+        if (slice !== 'cause') { ui.sysNode = null; if (slice === 'overview') history.replaceState(null, '', '#/system'); }
         ui.sysDock = ui.sysDock === want ? null : want;
         refresh(); return;
       }
       if ((t = e.target.closest('[data-sys-preset]'))) {
         var pr = PRESETS[+t.dataset.sysPreset];
-        if (pr.path) { ui.sysNode = null; pathSel = pr.path; history.replaceState(null, '', '#/system'); refresh(); return; }
-        ui.sysMode = pr.mode; if (pr.impulse) ui.sysImpulse = pr.impulse;
-        select(pr.node, true); return;
+        ui.sysDock = null;
+        if (pr.path) {
+          if (slice !== 'overview') { ui.sysPendingPath = +t.dataset.sysPreset; goSlice('overview'); return; }
+          ui.sysNode = null; pathSel = pr.path; history.replaceState(null, '', '#/system'); refresh(); return;
+        }
+        ui.sysMode = pr.mode === 'sim' ? 'sim' : 'links'; if (pr.impulse) ui.sysImpulse = pr.impulse;
+        ui.sysFocus = pr.node; goSlice('cause', pr.node); return;
       }
       if ((t = e.target.closest('[data-sys-zoom]'))) {
         var z = t.dataset.sysZoom;
         if (z === 'in') zoomAt(1.35, (W - dockW()) / 2, H / 2, true);
         else if (z === 'out') zoomAt(1 / 1.35, (W - dockW()) / 2, H / 2, true);
-        else if (z === 'fit') { markMoved(false); setView(fitView(), true); }
+        else if (z === 'fit') { userMoved = false; setView(fitView(), true); }
         else if (z === 'full') {
           if (document.fullscreenElement) document.exitFullscreen().catch(function () {});
           else stage.requestFullscreen().catch(function () { BM.toast('Браузер не разрешил полноэкранный режим'); });
@@ -963,18 +1385,18 @@
       }
     }, sig);
     stage.addEventListener('change', function (e) {
-      if (e.target.id === 'sys-project') { ui.sysProject = e.target.value; BM.render(); }
-      if (e.target.id === 'sys-stage-f') {
-        ui.sysStage = e.target.value; pathSel = null; ui.sysNode = null;
-        if (ui.sysDock === 'node') ui.sysDock = null;
-        history.replaceState(null, '', '#/system');
-        refresh();
-      }
+      if (e.target.id === 'sys-project') { ui.sysProject = e.target.value; BM.render(); return; }
+      if (e.target.id === 'sys-stage-f') ui.sysStage = e.target.value;
+      else if (e.target.id === 'sys-type-f') ui.sysType = e.target.value;
+      else return;
+      pathSel = null;
+      if (slice === 'overview') { ui.sysNode = null; history.replaceState(null, '', '#/system'); }
+      refresh();
     }, sig);
     document.addEventListener('fullscreenchange', function () {
       var b = stage.querySelector('[data-sys-zoom="full"]');
       if (b) b.setAttribute('aria-label', document.fullscreenElement ? 'Выйти из полноэкранного режима' : 'Развернуть на весь экран');
-      setTimeout(function () { setView(fitView(), true); }, 120);
+      setTimeout(function () { userMoved = false; setView(fitView(), true); }, 120);
     }, sig);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) requestDraw(); }, sig);
 
@@ -982,25 +1404,23 @@
     ro.observe(stage);
     ctl.signal.addEventListener('abort', function () { ro.disconnect(); });
 
-    // initial state
+    // initial
     var legendPref = null;
     try { legendPref = localStorage.getItem('bmh-sys-legend'); } catch (err) {}
-    var wide = window.innerWidth >= 1024;
-    var legendOn = legendPref ? legendPref === '1' : wide;
+    var legendOn = legendPref ? legendPref === '1' : window.innerWidth >= 1024;
     stage.classList.toggle('legend-open', legendOn);
     var lb = stage.querySelector('[data-sys-legend]'); if (lb) lb.setAttribute('aria-expanded', legendOn);
-    if (!ui.sysNode && ui.sysDock === undefined) ui.sysDock = null;
-    if (ui.sysNode) ui.sysDock = 'node';
+    if (ui.sysPendingPath != null && slice === 'overview') { pathSel = PRESETS[ui.sysPendingPath].path; ui.sysPendingPath = null; }
     renderDock();
     resize();
     refresh();
     var hint = stage.querySelector('#sys-hint'), seen = null;
-    try { seen = localStorage.getItem('bmh-sys-hint'); } catch (err) {}
+    try { seen = localStorage.getItem('bmh-sys-hint2'); } catch (err) {}
     if (!seen) {
-      hint.textContent = matchMedia('(pointer: coarse)').matches ? 'Щипок — масштаб · проведите пальцем — перемещение · нажмите на точку' : 'Колесо — масштаб · перетаскивание — перемещение · нажмите на точку';
+      hint.textContent = 'Переключайте срезы сверху: Обзор, Причины и следствия, Деньги. ' + (matchMedia('(pointer: coarse)').matches ? 'Щипок — масштаб.' : 'Колесо — масштаб.');
       hint.hidden = false;
-      setTimeout(function () { hint.hidden = true; }, 5000);
-      try { localStorage.setItem('bmh-sys-hint', '1'); } catch (err) {}
+      setTimeout(function () { hint.hidden = true; }, 6000);
+      try { localStorage.setItem('bmh-sys-hint2', '1'); } catch (err) {}
     }
   };
 })();

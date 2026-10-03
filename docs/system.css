@@ -98,3 +98,7 @@ html.sys-lock .main { padding-bottom: 0; }
 .sys-preset:hover { background: var(--surface-strong); }
 .sys-preset b { font-size: 14px; }
 .sys-preset small { font-size: 12.5px; color: var(--muted); }
+
+.lg-op { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-ink); font-weight: 700; font-size: 13px; }
+.sys-hud-row .sys-seg button { white-space: nowrap; }
+.chip[disabled] { opacity: .5; cursor: not-allowed; }

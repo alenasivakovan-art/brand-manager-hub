@@ -10,7 +10,7 @@
     if (h[0] === 'projects') return { name: 'projects', folder: h[1] || null };
     if (h[0] === 'p' && h[1]) return { name: 'project', id: h[1], tab: h[2] || 'overview' };
     if (h[0] === 'kb') return { name: 'kb', tab: h[1] || 'method' };
-    if (h[0] === 'system') return { name: 'system', id: h[1] || null };
+    if (h[0] === 'system') return { name: 'system', id: h[1] || null, tab: h[2] || null };
     if (h[0] === 'settings') return { name: 'settings' };
     return { name: 'home' };
   }
@@ -23,7 +23,7 @@
   BM.render = function () {
     route = parseRoute();
     if (BM.systemUnmount) BM.systemUnmount();
-    var key = route.name + '/' + (route.name === 'system' ? '' : (route.id || route.folder || '')) + '/' + (route.tab || '');
+    var key = route.name === 'system' ? 'system' : route.name + '/' + (route.id || route.folder || '') + '/' + (route.tab || '');
     var routeChanged = key !== lastRouteKey;
     lastRouteKey = key;
 
@@ -39,7 +39,7 @@
       document.title = 'Проекты · Бренд-менеджер';
     } else if (route.name === 'kb') { html = V.kb(route.tab); document.title = 'База знаний · Бренд-менеджер'; }
     else if (route.name === 'settings') { html = V.settings(); document.title = 'Настройки · Бренд-менеджер'; }
-    else if (route.name === 'system') { html = V.system(route.id); document.title = 'Система маркетинга · Бренд-менеджер'; }
+    else if (route.name === 'system') { html = V.system(route.id, route.tab); document.title = 'Система маркетинга · Бренд-менеджер'; }
     else { html = V.home(); document.title = 'Бренд-менеджер'; }
 
     document.getElementById('sidebar').innerHTML = V.sidebar(route);
