@@ -398,8 +398,8 @@
           txt = '<b>' + esc(n0.label) + '</b><span>влияет на ' + edges.filter(function (e) { return e.from === n0.id; }).length + ' · зависит от ' + edges.filter(function (e) { return e.to === n0.id; }).length + '</span>';
         }
       }
-      if (!txt) { cap.innerHTML = '<span class="hint-ic">' + icon('info', 'sm') + '</span><span>Нажмите на узел, чтобы увидеть его связи, или выберите готовый сценарий' + (window.innerWidth < 1640 ? ' ниже' : ' справа') + '.</span>'; return; }
-      cap.innerHTML = txt.replace('</b><span>', '</b><span>· ') + '<button type="button" class="btn sm soft to-panel" data-sys-topanel>Подробнее ↓</button><button type="button" class="icon-btn sm" data-sys-clear aria-label="Сбросить">' + icon('x', 'sm') + '</button>';
+      if (!txt) { cap.innerHTML = '<span class="hint-ic">' + icon('info', 'sm') + '</span><div class="cap-t"><span>Нажмите на узел, чтобы увидеть его связи, или выберите готовый сценарий' + (window.innerWidth < 1640 ? ' ниже' : ' справа') + '.</span></div>'; return; }
+      cap.innerHTML = '<div class="cap-t">' + txt.replace('</b><span>', '</b> <span>· ') + '</div><button type="button" class="btn sm soft to-panel" data-sys-topanel>Подробнее ↓</button><button type="button" class="icon-btn sm" data-sys-clear aria-label="Сбросить">' + icon('x', 'sm') + '</button>';
     }
 
     function panel() {
