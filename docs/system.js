@@ -630,7 +630,7 @@
       CLUSTERS.concat(['brand']).map(function (s) { return '<span><i class="lg-dot" style="background:' + STAGE_C[s] + '"></i>' + esc(CLUSTER_TITLE[s]) + '</span>'; }).join('') :
       slice === 'money' ? '<span><b class="lg-op">+</b>складывается</span><span><b class="lg-op">×</b>умножается</span><span><b class="lg-op">−</b>вычитается</span><span><b class="lg-op">÷</b>делится</span><span><i class="lg-line pos"></i>деньги стекаются к итогу</span>' :
         '<span><i class="lg-line pos"></i>усиливает</span><span><i class="lg-line neg"></i>снижает</span><span><i class="lg-line in"></i>причина</span><span class="lg-tip">Нажмите на любой узел, чтобы сделать его центром.</span>';
-    legend += (p ? '<span><i class="lg-hdot"></i>данные проекта «' + esc(p.name) + '»</span>' : '') + (slice === 'overview' ? '<span class="lg-tip">Колесо или щипок — масштаб · перетаскивание — перемещение · подписи показателей появляются при приближении и наведении.</span>' : '');
+    legend += (p ? '<span><i class="lg-hdot"></i>данные проекта «' + esc(p.name) + '»</span>' : '') + (slice === 'overview' ? '<span class="lg-tip">Колесо или щипок — масштаб · перетаскивание — перемещение. Если подписи не помещаются, приблизьте карту — они появятся.</span>' : '');
     var sub = { overview: 'из чего состоит маркетинг', cause: 'почему и что будет дальше', money: 'какой рычаг двигает прибыль' }[slice];
     return '<h1 class="sr-only">Система маркетинга</h1>' +
       '<div class="sys-stage" id="sys-stage" data-slice="' + slice + '" tabindex="0" aria-label="Карта системы маркетинга. Плюс и минус — масштаб, ноль — вписать, стрелки — перемещение. Узлы доступны списком в разделе «Все узлы».">' +
@@ -701,7 +701,10 @@
     function dockW() { return dock.classList.contains('open') && W >= 900 ? dock.offsetWidth + 28 : 0; }
     function fitView() {
       var mobile = W < 1024, sheet = W < 900 && dock.classList.contains('open') ? dock.offsetHeight + 96 : 0;
-      var top = mobile ? 132 : 92, bottom = mobile ? Math.max(104, sheet) : 24, side = 16;
+      var hud = stage.querySelector('.sys-hud'), lg = stage.querySelector('.sys-legend');
+      var top = hud ? hud.offsetTop + hud.offsetHeight + 14 : (mobile ? 132 : 92);
+      var lgH = !mobile && stage.classList.contains('legend-open') && lg ? lg.offsetHeight + 24 : 0;
+      var bottom = mobile ? Math.max(104, sheet) : Math.max(24, lgH), side = 16;
       var aw = Math.max(200, W - dockW() - side * 2), ah = Math.max(200, H - top - bottom);
       var b = geo.bounds, bw = b.maxX - b.minX, bh = b.maxY - b.minY;
       var k = clamp(Math.min(aw / bw, ah / bh), 0.12, 1.6);
@@ -955,7 +958,7 @@
     function drawDots(t) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       var k = view.k, narrow = W < 900;
-      var showAll = slice === 'cause' ? true : k / fitK >= (narrow ? 1.8 : 1.15);
+      var jobs = [];
       var focus = !!(focusId() || pathSel || filtersOn());
       geo.items.forEach(function (it) {
         var st = itemState(it), n = it.n;
@@ -980,8 +983,8 @@
           ctx.strokeStyle = dark ? '#101410' : '#fff'; ctx.lineWidth = 1.5;
           ctx.beginPath(); ctx.arc(sx + rs * 0.85, sy - rs * 0.85, 3.6, 0, 6.283); ctx.fill(); ctx.stroke();
         }
-        var important = n.layer === 4 || (!narrow && (n.layer === 0 || n.layer === 1));
-        if (!(showAll || important || st.on || st.sel || it.id === hoverId) || (focus && st.dim && !showAll)) { ctx.globalAlpha = 1; return; }
+        ctx.globalAlpha = 1;
+        if (focus && st.dim && slice !== 'cause') return;
         var lx, ly, al, bl;
         if (slice === 'cause') {
           if (it.col < 0) { lx = sx - rs - 8; ly = sy; al = 'right'; bl = 'middle'; }
@@ -999,12 +1002,25 @@
         }
         var fs = slice === 'cause' ? (it.col === 0 ? 1.25 : 1) : clamp(Math.sqrt(k / 0.75), 0.84, 1.12);
         var label = (st.eff != null ? (st.eff > 0 ? '↑ ' : '↓ ') : '') + n.label;
-        ctx.font = (n.layer === 4 || st.sel ? '700 ' : '500 ') + (12.5 * fs * (n.layer === 4 ? 1.1 : 1)).toFixed(1) + 'px Onest, system-ui, sans-serif';
-        ctx.textAlign = al; ctx.textBaseline = bl;
-        ctx.lineWidth = 4; ctx.strokeStyle = C.halo; ctx.strokeText(label, lx, ly);
-        ctx.fillStyle = st.eff != null ? 'rgb(' + (st.good ? C.good : C.bad) + ')' : C.label;
-        ctx.globalAlpha = st.dim ? 0.35 : 1;
-        ctx.fillText(label, lx, ly);
+        var font = (n.layer === 4 || st.sel ? '700 ' : '500 ') + (12.5 * fs * (n.layer === 4 ? 1.1 : 1)).toFixed(1) + 'px Onest, system-ui, sans-serif';
+        var force = st.sel || it.id === hoverId || st.eff != null || (focus && st.on) || n.layer === 4;
+        var pri = force ? 0 : [3, 4, 6, 5, 1][n.layer];
+        jobs.push({ label: label, font: font, x: lx, y: ly, al: al, bl: bl, pri: pri, force: force, dim: st.dim, color: st.eff != null ? 'rgb(' + (st.good ? C.good : C.bad) + ')' : C.label, size: 12.5 * fs });
+      });
+      jobs.sort(function (a, b) { return a.pri - b.pri; });
+      var placed = [];
+      jobs.forEach(function (j) {
+        ctx.font = j.font;
+        var w = ctx.measureText(j.label).width, h = j.size * 1.25;
+        var x0 = j.al === 'right' ? j.x - w : j.al === 'center' ? j.x - w / 2 : j.x;
+        var y0 = j.bl === 'bottom' ? j.y - h : j.bl === 'middle' ? j.y - h / 2 : j.y;
+        var r = { x: x0 - 3, y: y0 - 1, w: w + 6, h: h + 2 };
+        if (!j.force && placed.some(function (q) { return r.x < q.x + q.w && r.x + r.w > q.x && r.y < q.y + q.h && r.y + r.h > q.y; })) return;
+        placed.push(r);
+        ctx.textAlign = j.al; ctx.textBaseline = j.bl;
+        ctx.lineWidth = 4; ctx.strokeStyle = C.halo; ctx.strokeText(j.label, j.x, j.y);
+        ctx.fillStyle = j.color; ctx.globalAlpha = j.dim ? 0.35 : 1;
+        ctx.fillText(j.label, j.x, j.y);
         ctx.globalAlpha = 1;
       });
     }
@@ -1419,6 +1435,8 @@
     if (!seen) {
       hint.textContent = 'Переключайте срезы сверху: Обзор, Причины и следствия, Деньги. ' + (matchMedia('(pointer: coarse)').matches ? 'Щипок — масштаб.' : 'Колесо — масштаб.');
       hint.hidden = false;
+      var hudEl = stage.querySelector('.sys-hud');
+      if (hudEl && window.innerWidth >= 1024) hint.style.top = (hudEl.offsetTop + hudEl.offsetHeight + 12) + 'px';
       setTimeout(function () { hint.hidden = true; }, 6000);
       try { localStorage.setItem('bmh-sys-hint2', '1'); } catch (err) {}
     }
