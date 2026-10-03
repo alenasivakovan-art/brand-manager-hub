@@ -300,8 +300,8 @@
         '<p>Каждый узел — область или показатель. Нажмите на узел, чтобы увидеть, что на него влияет и на что влияет он. В режиме симуляции посмотрите, как рост или падение одного показателя расходится по всей системе.</p></div></div>' +
       '<div class="row">' + modes + '<span class="spacer"></span>' + projSel + '</div>' +
       '<div class="sys-layout">' +
-        '<div class="card sys-graph"><div class="sys-scroll" tabindex="0" aria-label="Схема, листается по горизонтали">' + svg + '</div>' + legend + '</div>' +
-        '<aside class="card sys-panel" id="sys-panel" aria-live="polite"></aside>' +
+        '<div class="card sys-graph"><div class="sys-caption" id="sys-caption" aria-live="polite"></div><div class="sys-scroll" tabindex="0" aria-label="Схема, листается по горизонтали">' + svg + '</div>' + legend + '</div>' +
+        '<aside class="card sys-panel" id="sys-panel" aria-label="Подробности"></aside>' +
       '</div></div>';
   };
 
@@ -383,7 +383,27 @@
         '<span><b>' + esc(n.label) + '</b><small>' + verb + ' · ' + esc(e.why) + '</small></span></button></li>';
     }
 
+    function caption() {
+      var cap = root.querySelector('#sys-caption'), txt = null;
+      if (pathSel) {
+        var pr0 = PRESETS.filter(function (x) { return x.path === pathSel; })[0];
+        txt = '<b>' + esc(pr0.title) + '</b><span>' + pathSel.length + ' шагов</span>';
+      } else if (ui.sysNode) {
+        var n0 = byId[ui.sysNode];
+        if (ui.sysMode === 'sim' && lastSim) {
+          var g = 0, b = 0;
+          Object.keys(lastSim.eff).forEach(function (k) { if (k === n0.id || Math.abs(lastSim.eff[k]) < 0.04) return; if (lastSim.eff[k] * byId[k].polarity > 0) g++; else b++; });
+          txt = '<b>Если «' + esc(n0.label) + '» ' + (ui.sysImpulse > 0 ? 'вырастет' : 'снизится') + '</b><span>улучшится ' + g + ' · ухудшится ' + b + '</span>';
+        } else {
+          txt = '<b>' + esc(n0.label) + '</b><span>влияет на ' + edges.filter(function (e) { return e.from === n0.id; }).length + ' · зависит от ' + edges.filter(function (e) { return e.to === n0.id; }).length + '</span>';
+        }
+      }
+      if (!txt) { cap.innerHTML = '<span class="hint-ic">' + icon('info', 'sm') + '</span><span>Нажмите на узел, чтобы увидеть его связи, или выберите готовый сценарий' + (window.innerWidth < 1640 ? ' ниже' : ' справа') + '.</span>'; return; }
+      cap.innerHTML = txt.replace('</b><span>', '</b><span>· ') + '<button type="button" class="btn sm soft to-panel" data-sys-topanel>Подробнее ↓</button><button type="button" class="icon-btn sm" data-sys-clear aria-label="Сбросить">' + icon('x', 'sm') + '</button>';
+    }
+
     function panel() {
+      caption();
       var el = root.querySelector('#sys-panel');
       var p = ui.sysProject ? BM.project(ui.sysProject) : null;
       if (pathSel) {
@@ -396,7 +416,7 @@
         return;
       }
       if (!ui.sysNode) {
-        el.innerHTML = '<h2>Сценарии</h2><p class="muted small" style="margin:6px 0 12px">Выберите готовый сценарий или нажмите на любой узел схемы.</p><div class="stack" style="gap:8px">' +
+        el.innerHTML = '<h2>Сценарии</h2><p class="muted small" style="margin:6px 0 12px">Выберите готовый сценарий или нажмите на любой узел схемы.</p><div class="stack sys-presets" style="gap:8px">' +
           PRESETS.map(function (x, i) { return '<button type="button" class="sys-preset" data-sys-preset="' + i + '"><b>' + esc(x.title) + '</b><small>' + esc(x.text) + '</small></button>'; }).join('') + '</div>';
         return;
       }
@@ -421,8 +441,8 @@
       var outs = edges.filter(function (e) { return e.from === n.id; }).sort(function (a, b) { return b.w - a.w; });
       var ins = edges.filter(function (e) { return e.to === n.id; }).sort(function (a, b) { return b.w - a.w; });
       el.innerHTML = head +
-        '<h3 style="margin-top:16px">Влияет на · ' + outs.length + '</h3><ul class="sys-rels">' + outs.map(function (e) { return relItem(e, e.to, 'out'); }).join('') + '</ul>' +
-        '<h3 style="margin-top:14px">Зависит от · ' + ins.length + '</h3><ul class="sys-rels">' + ins.map(function (e) { return relItem(e, e.from, 'in'); }).join('') + '</ul>' +
+        '<div class="sys-cols"><div><h3 style="margin-top:16px">Влияет на · ' + outs.length + '</h3><ul class="sys-rels">' + outs.map(function (e) { return relItem(e, e.to, 'out'); }).join('') + '</ul></div>' +
+        '<div><h3 style="margin-top:16px">Зависит от · ' + ins.length + '</h3><ul class="sys-rels">' + (ins.length ? ins.map(function (e) { return relItem(e, e.from, 'in'); }).join('') : '<li class="small muted" style="padding:8px">Стартовая точка системы — задаётся решениями команды.</li>') + '</ul></div></div>' +
         '<button type="button" class="btn soft block" style="margin-top:14px" data-sys-mode="sim">' + icon('sparkle', 'sm') + 'Смоделировать влияние</button>';
     }
 
@@ -524,6 +544,7 @@
       }
       if ((t = e.target.closest('[data-sys-impulse]'))) { ui.sysImpulse = +t.dataset.sysImpulse; refresh(); return; }
       if (e.target.closest('[data-sys-clear]')) { select(null); return; }
+      if (e.target.closest('[data-sys-topanel]')) { root.querySelector('#sys-panel').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' }); return; }
       if ((t = e.target.closest('[data-sys-preset]'))) {
         var pr = PRESETS[+t.dataset.sysPreset];
         if (pr.path) { ui.sysNode = null; pathSel = pr.path; history.replaceState(null, '', '#/system'); refresh(); return; }
