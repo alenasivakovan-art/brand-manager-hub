@@ -402,7 +402,7 @@
   var BOUNDS = (function () {
     var b = { minX: 1e9, maxX: -1e9, minY: 1e9, maxY: -1e9 };
     NODES.forEach(function (n) { b.minX = Math.min(b.minX, n.x); b.maxX = Math.max(b.maxX, n.x); b.minY = Math.min(b.minY, n.y); b.maxY = Math.max(b.maxY, n.y); });
-    b.minX -= 150; b.maxX += 150; b.minY -= 50; b.maxY = TIP.y + 40;
+    b.minX -= 240; b.maxX += 240; b.minY -= 50; b.maxY = TIP.y + 40;
     return b;
   })();
 
@@ -424,7 +424,7 @@
     var legend = LAYERS.map(function (l) { return '<span><i class="lg-dot l' + l.id + '"></i>' + esc(l.title) + '</span>'; }).join('') +
       '<span><i class="lg-line pos"></i>усиливает</span><span><i class="lg-line neg"></i>снижает</span><span><i class="lg-line in"></i>влияет на выбранный узел</span>' +
       (p ? '<span><i class="lg-hdot"></i>данные проекта «' + esc(p.name) + '»</span>' : '') +
-      '<span class="lg-tip">Колесо или щипок — масштаб · перетаскивание — перемещение · двойной клик — приблизить</span>';
+      '<span class="lg-tip">Колесо или щипок — масштаб · перетаскивание — перемещение · двойной клик — приблизить. Подписи показателей и результатов появляются при приближении и наведении.</span>';
     return '<h1 class="sr-only">Система маркетинга</h1>' +
       '<div class="sys-stage" id="sys-stage" tabindex="0" aria-label="Карта системы маркетинга. Плюс и минус — масштаб, ноль — вписать, стрелки — перемещение. Узлы доступны списком в разделе «Все узлы».">' +
         '<canvas class="sys-canvas" aria-hidden="true"></canvas>' +
@@ -660,7 +660,7 @@
       // nodes + labels in screen space
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       var p = ui.sysProject ? BM.project(ui.sysProject) : null;
-      var showAll = k / fitK >= 0.62;
+      var showAll = k / fitK >= 1.1;
       NODES.forEach(function (n) {
         var st = nodeState(n);
         var sx = view.x + n.x * k, sy = view.y + n.y * k;
@@ -682,7 +682,7 @@
           ctx.strokeStyle = dark ? '#101410' : '#fff'; ctx.lineWidth = 1.5;
           ctx.beginPath(); ctx.arc(sx + rs * 0.85, sy - rs * 0.85, 3.6, 0, 6.283); ctx.fill(); ctx.stroke();
         }
-        if (!(showAll || n.layer === 4 || st.on || st.sel) || (focus && st.dim && !showAll)) { ctx.globalAlpha = 1; return; }
+        if (!(showAll || n.layer === 0 || n.layer === 1 || n.layer === 4 || st.on || st.sel || n.id === hoverId) || (focus && st.dim && !showAll)) { ctx.globalAlpha = 1; return; }
         var dx = n.x - CORE.x, dy = n.y - (CORE.y - 40), dl = Math.sqrt(dx * dx + dy * dy) || 1, ux = dx / dl, uy = dy / dl;
         var lx, ly, al, bl;
         if (n.layer === 4) { lx = sx + (n.x < 0 ? -1 : 1) * (rs + 8); ly = sy; al = n.x < 0 ? 'right' : 'left'; bl = 'middle'; }
