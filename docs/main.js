@@ -11,6 +11,8 @@
     if (h[0] === 'p' && h[1]) return { name: 'project', id: h[1], tab: h[2] || 'overview' };
     if (h[0] === 'kb') return { name: 'kb', tab: h[1] || 'method' };
     if (h[0] === 'system') return { name: 'system', id: h[1] || null, tab: h[2] || null };
+    if (h[0] === 'cost') return { name: 'cost', id: h[1] || null };
+    if (h[0] === 'insights') return { name: 'insights', id: h[1] || null, tab: h[2] || null };
     if (h[0] === 'settings') return { name: 'settings' };
     return { name: 'home' };
   }
@@ -40,6 +42,8 @@
     } else if (route.name === 'kb') { html = V.kb(route.tab); document.title = 'База знаний · Бренд-менеджер'; }
     else if (route.name === 'settings') { html = V.settings(); document.title = 'Настройки · Бренд-менеджер'; }
     else if (route.name === 'system') { html = V.system(route.id, route.tab); document.title = 'Система маркетинга · Бренд-менеджер'; }
+    else if (route.name === 'cost') { html = V.cost(route.id); document.title = 'Себестоимость · Бренд-менеджер'; }
+    else if (route.name === 'insights') { html = V.insights(route.id, route.tab); document.title = 'Тренды и рынок · Бренд-менеджер'; }
     else { html = V.home(); document.title = 'Бренд-менеджер'; }
 
     document.getElementById('sidebar').innerHTML = V.sidebar(route);
@@ -50,6 +54,8 @@
 
     if (route.name === 'kb' && route.tab === 'process') renderMermaid();
     if (route.name === 'system') BM.systemMount();
+    if (route.name === 'cost') BM.costMount();
+    if (route.name === 'insights') BM.insightsMount();
     var tabsBar = document.querySelector('#page .tabs'), activeTab = tabsBar && tabsBar.querySelector('.tab.active');
     if (activeTab && (activeTab.offsetLeft < tabsBar.scrollLeft || activeTab.offsetLeft + activeTab.offsetWidth > tabsBar.scrollLeft + tabsBar.clientWidth)) {
       tabsBar.scrollLeft = activeTab.offsetLeft - (tabsBar.clientWidth - activeTab.offsetWidth) / 2;
@@ -490,6 +496,8 @@
       { t: 'Главная', i: 'home', run: function () { go('#/'); } },
       { t: 'Все проекты', i: 'grid', run: function () { go('#/projects'); } },
       { t: 'Система маркетинга', i: 'network', run: function () { go('#/system'); } },
+      { t: 'Тренды и рынок', i: 'radar', run: function () { go('#/insights'); } },
+      { t: 'Себестоимость и симуляции', i: 'calc', run: function () { go('#/cost'); } },
       { t: 'База знаний', i: 'book', run: function () { go('#/kb'); } },
       { t: 'Карта процессов', i: 'map', run: function () { go('#/kb/process'); } },
       { t: 'Настройки и синхронизация', i: 'sliders', run: function () { go('#/settings'); } },
