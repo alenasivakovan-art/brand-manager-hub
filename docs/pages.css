@@ -201,3 +201,25 @@
 .in-star[aria-pressed="true"] svg { fill: currentColor; }
 .in-empty-steps { margin: 10px 0 0; padding-left: 20px; color: var(--ink-2); }
 .in-empty-steps li { margin-bottom: 6px; }
+
+/* insights: concrete breakdown & world markets */
+.in-bd { display: grid; grid-template-columns: minmax(96px, auto) 1fr; gap: 6px 12px; margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--tile-fill); border: 1px solid var(--glass-border); font-size: 13px; }
+.in-bd dt { font-size: 11.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; padding-top: 3px; }
+.in-bd dd { margin: 0; color: var(--ink); line-height: 1.5; min-width: 0; }
+@media (max-width: 420px) { .in-bd { grid-template-columns: 1fr; gap: 2px; } .in-bd dd { margin-bottom: 6px; } }
+.in-pchips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.in-pchip { display: inline-block; font-size: 12px; line-height: 1.35; padding: 2px 8px; border-radius: 8px; background: var(--surface-3); color: var(--ink-2); }
+.in-ru { display: inline-flex; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 99px; background: var(--surface-3); color: var(--ink-2); }
+.in-ru.none { background: color-mix(in srgb, var(--c-better) 14%, transparent); color: var(--c-better); }
+.in-ru.early { background: color-mix(in srgb, #C8961F 16%, transparent); color: #9A7215; }
+.in-ru.mass { background: var(--surface-3); color: var(--muted); }
+:root[data-theme="dark"] .in-ru.early { color: #E0B44A; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .in-ru.early { color: #E0B44A; } }
+.in-opp { font-size: 13.5px; padding: 10px 12px; border-radius: 12px; background: var(--primary-soft); color: var(--ink); line-height: 1.5; }
+.in-opp b { display: block; font-size: 11.5px; font-weight: 700; color: var(--primary-ink); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
+.in-regions { margin-bottom: 4px; }
+.in-region { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.in-leaders { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.in-leaders li { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 12px; background: var(--tile-fill); border: 1px solid var(--glass-border); }
+.in-leaders p { margin: 0; font-size: 13.5px; color: var(--ink-2); line-height: 1.5; }
+.in-mini { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
