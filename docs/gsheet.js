@@ -190,7 +190,7 @@
     var f = e.target;
     if (!f.matches('[data-form="gsheet"]')) return;
     e.preventDefault();
-    var d = BM.formData(f), btn = f.querySelector('button[type=submit]');
+    var d = { url: f.querySelector('#gs-url').value, key: f.querySelector('#gs-key').value }, btn = f.querySelector('button[type=submit]');
     if (btn) btn.disabled = true;
     BM.toast('Подключаюсь к таблице…');
     connect(d.url, d.key).then(function (res) { BM.toast('Таблица «' + res.name + '» подключена, расчёты выгружены'); BM.render(); },

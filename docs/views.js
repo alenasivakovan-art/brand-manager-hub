@@ -521,8 +521,8 @@
         '<li>Ключ подключения появится в журнале выполнения внизу редактора после запуска setup. Его же можно посмотреть в таблице: меню <b>Бренд-менеджер → Ключ подключения</b>.</li>' +
         '<li>Вставьте URL и ключ ниже и нажмите «Подключить». Сайт сам создаст вкладки со всеми расчётами.</li></ol>' +
         '<p class="small muted">Ключ — как пароль к таблице: храните его только в этих настройках. Доступ «Все» означает, что веб-приложение ответит тому, у кого есть и адрес, и ключ.</p></details>' +
-      '<form class="form-grid two" data-form="gsheet"><div class="field"><label for="gs-url">URL веб-приложения</label><input class="input" id="gs-url" name="url" value="' + esc(s.gsUrl || '') + '" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" inputmode="url"></div>' +
-        '<div class="field"><label for="gs-key">Ключ подключения</label><input class="input" id="gs-key" name="key" type="password" value="' + esc(s.gsKey || '') + '" autocomplete="off"></div>' +
+      '<form class="form-grid two" data-form="gsheet"><div class="field"><label for="gs-url">URL веб-приложения</label><input class="input" id="gs-url" name="gs-webapp-url" type="url" data-lpignore="true" data-1p-ignore value="' + esc(s.gsUrl || '') + '" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false"></div>' +
+        '<div class="field"><label for="gs-key">Ключ подключения</label><input class="input" id="gs-key" name="gs-connect-key" type="password" autocomplete="new-password" data-lpignore="true" data-1p-ignore placeholder="32 символа из журнала выполнения" value="' + esc(s.gsKey || '') + '"></div>' +
         '<div class="actions col-full"><button type="submit" class="btn primary">' + icon('check', 'sm') + (on ? 'Переподключить' : 'Подключить') + '</button>' + (on ? '<button type="button" class="btn ghost" data-gs-off>Отключить</button>' : '') + '</div></form></section>';
   }
   V.settings = function () {
