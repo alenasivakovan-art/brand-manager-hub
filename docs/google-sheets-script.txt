@@ -17,7 +17,7 @@
 // ID таблицы из её адреса (docs.google.com/spreadsheets/d/<ID>/edit). Нужен, только если скрипт создан не из меню таблицы.
 var SPREADSHEET_ID = '';
 
-var LAYOUT_VERSION = 2;
+var LAYOUT_VERSION = 3;
 var META = '_meta';
 var SUMMARY = 'Сводка';
 var CURRENCIES = ['RUB', 'USD', 'EUR', 'CNY'];
@@ -167,6 +167,32 @@ var RES_ROWS = [
 ];
 var COLS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
+// Formulas are generated with commas; spreadsheets in locales with a decimal comma (ru_RU and others)
+// expect semicolons between arguments, even from Apps Script. Detect once per locale and convert.
+var SEP_CACHE = null;
+function sep_(ss) {
+  if (SEP_CACHE) return SEP_CACHE;
+  var props = PropertiesService.getScriptProperties(), key = 'SEP_' + ss.getSpreadsheetLocale(), saved = props.getProperty(key);
+  if (saved) return (SEP_CACHE = saved);
+  var cell = metaSheet_(ss).getRange('D1');
+  cell.setFormula('=SUM(1,2)');
+  SpreadsheetApp.flush();
+  var sep = cell.getValue() === 3 ? ',' : ';';
+  cell.clearContent();
+  props.setProperty(key, sep);
+  return (SEP_CACHE = sep);
+}
+function loc_(f, sep) {
+  if (sep === ',') return f;
+  var out = '', inStr = false;
+  for (var i = 0; i < f.length; i++) {
+    var ch = f.charAt(i);
+    if (ch === '"') inStr = !inStr;
+    out += (!inStr && ch === ',') ? sep : ch;
+  }
+  return out;
+}
+
 function rate_(cell) { return 'IF(' + cell + '="USD",$B$11,IF(' + cell + '="EUR",$B$12,IF(' + cell + '="CNY",$B$13,1)))'; }
 
 // Builds the static part of a product tab: labels, formulas, formats, validation.
@@ -276,7 +302,8 @@ function build_(sh, L) {
     f.forEach(function (expr, j) { set(L.res0 + j, k + 2, '=IF(' + cell('enabled') + ',' + expr + ',"")'); });
   }
 
-  sh.getRange(1, 1, L.end, 8).setFormulas(fg);
+  var sep = sep_(sh.getParent());
+  sh.getRange(1, 1, L.end, 8).setFormulas(fg.map(function (row) { return row.map(function (f) { return f ? loc_(f, sep) : ''; }); }));
   sh.getRange(1, 1, L.end, 1).setValues(g.map(function (row) { return [row[0]]; }));
   [L.ingH + 1, L.packH + 1, L.onceH + 1, L.chHead].forEach(function (hr) { sh.getRange(hr, 2, 1, 7).setValues([g[hr - 1].slice(1)]); });
 
@@ -419,40 +446,63 @@ function pull_(ss, since) {
   var products = readMeta_(ss).map(function (m) {
     var sh = sheetByGid_(ss, m.gid);
     if (!sh || m.version !== LAYOUT_VERSION) return null;
-    var L = layout_(m.capIng, m.capPack, m.capOnce);
-    var g = sh.getRange(1, 1, L.end, 8).getValues();
-    var v = function (r, c) { return g[r - 1][c - 1]; };
-    var rows = function (r0, cap, map) { var out = []; for (var i = 0; i < cap; i++) { var r = r0 + i; if (String(v(r, 1)).trim() !== '') out.push(map(r)); } return out; };
-    var ch = {};
-    CHANNELS.forEach(function (c, k) {
-      var o = {};
-      CH_FIELDS.forEach(function (f, j) { o[f[0]] = v(L.in0 + j, k + 2); });
-      ch[c.id] = o;
-    });
-    var simple = {};
-    Object.keys(SIMPLE_MAP).forEach(function (f) { simple[SIMPLE_MAP[f]] = ch.simple[f]; });
-    return {
-      id: m.id,
-      inputs: {
-        name: v(1, 1), unitVolume: v(6, 2), unit: v(6, 3), density: v(7, 2), batch: v(9, 2), defectPct: v(10, 2),
-        rates: { USD: v(11, 2), EUR: v(12, 2), CNY: v(13, 2) }, includeOneOff: v(14, 2) === true,
-        ingredients: rows(L.ing0, L.capIng, function (r) { return { name: v(r, 1), pct: v(r, 2), price: v(r, 3), cur: v(r, 4), loss: v(r, 5) }; }),
-        packaging: rows(L.pack0, L.capPack, function (r) { return { name: v(r, 1), price: v(r, 2), cur: v(r, 3), scrap: v(r, 4) }; }),
-        production: { fillPerUnit: v(L.fill, 2), laborPerUnit: v(L.labor, 2), setupPerBatch: v(L.setup, 2) },
-        oneOff: rows(L.once0, L.capOnce, function (r) { return { name: v(r, 1), amount: v(r, 2), batches: v(r, 3), stage: idOf_(STAGES, v(r, 4)) }; }),
-        marking: { codePerUnit: v(L.code, 2), applyPerUnit: v(L.apply, 2) },
-        logistics: { inboundPerBatch: v(L.inbound, 2), fulfilPerUnit: v(L.fulfil, 2) },
-        tax: { mode: idOf_(TAX_MODES, v(L.taxMode, 2)), rate: v(L.taxRate, 2) },
-        marketing: { monthlyBudget: v(L.mkBudget, 2), monthlyUnits: v(L.mkUnits, 2) },
-        salesMode: idOf_(SALES_MODES, v(L.salesMode, 2)),
-        sales: simple,
-        mp: { wb: ch.wb, ozon: ch.ozon, ym: ch.ym }
-      }
-    };
+    return readProduct_(sh, layout_(m.capIng, m.capPack, m.capOnce), m.id);
   }).filter(function (x) { return x; });
   var st = digest_(JSON.stringify(products));
   if (since && String(since) === st) return { ok: true, stamp: st, changed: false, url: ss.getUrl() };
   return { ok: true, stamp: st, changed: true, products: products, url: ss.getUrl() };
+}
+
+// Rebuilds formulas and formatting on every product tab, keeping the entered data.
+function repairSheets() {
+  var ss = spreadsheet_(), meta = readMeta_(ss);
+  meta.forEach(function (m) {
+    var sh = sheetByGid_(ss, m.gid);
+    if (!sh) return;
+    var L = layout_(m.capIng, m.capPack, m.capOnce);
+    var prod = readProduct_(sh, L, m.id), g = sh.getRange(1, 1, L.end, 8).getValues();
+    var col = function (r0, cap) { var out = []; for (var i = 0; i < cap; i++) out.push(g[r0 - 1 + i][7]); return out; };
+    var keep = { brand: g[1][1], note: g[3][0], overrides: { ing: col(L.ing0, L.capIng), pack: col(L.pack0, L.capPack) } };
+    build_(sh, L);
+    writeInputs_(sh, L, { inputs: prod.inputs, brand: keep.brand, note: keep.note, overrides: keep.overrides });
+    m.version = LAYOUT_VERSION;
+  });
+  writeMeta_(ss, meta);
+  summary_(ss, meta);
+  bump_(ss);
+  Logger.log('Пересобрано вкладок: ' + meta.length);
+}
+
+function readProduct_(sh, L, id) {
+  var g = sh.getRange(1, 1, L.end, 8).getValues();
+  var v = function (r, c) { return g[r - 1][c - 1]; };
+  var rows = function (r0, cap, map) { var out = []; for (var i = 0; i < cap; i++) { var r = r0 + i; if (String(v(r, 1)).trim() !== '') out.push(map(r)); } return out; };
+  var ch = {};
+  CHANNELS.forEach(function (c, k) {
+    var o = {};
+    CH_FIELDS.forEach(function (f, j) { o[f[0]] = v(L.in0 + j, k + 2); });
+    ch[c.id] = o;
+  });
+  var simple = {};
+  Object.keys(SIMPLE_MAP).forEach(function (f) { simple[SIMPLE_MAP[f]] = ch.simple[f]; });
+  return {
+    id: id,
+    inputs: {
+      name: v(1, 1), unitVolume: v(6, 2), unit: v(6, 3), density: v(7, 2), batch: v(9, 2), defectPct: v(10, 2),
+      rates: { USD: v(11, 2), EUR: v(12, 2), CNY: v(13, 2) }, includeOneOff: v(14, 2) === true,
+      ingredients: rows(L.ing0, L.capIng, function (r) { return { name: v(r, 1), pct: v(r, 2), price: v(r, 3), cur: v(r, 4), loss: v(r, 5) }; }),
+      packaging: rows(L.pack0, L.capPack, function (r) { return { name: v(r, 1), price: v(r, 2), cur: v(r, 3), scrap: v(r, 4) }; }),
+      production: { fillPerUnit: v(L.fill, 2), laborPerUnit: v(L.labor, 2), setupPerBatch: v(L.setup, 2) },
+      oneOff: rows(L.once0, L.capOnce, function (r) { return { name: v(r, 1), amount: v(r, 2), batches: v(r, 3), stage: idOf_(STAGES, v(r, 4)) }; }),
+      marking: { codePerUnit: v(L.code, 2), applyPerUnit: v(L.apply, 2) },
+      logistics: { inboundPerBatch: v(L.inbound, 2), fulfilPerUnit: v(L.fulfil, 2) },
+      tax: { mode: idOf_(TAX_MODES, v(L.taxMode, 2)), rate: v(L.taxRate, 2) },
+      marketing: { monthlyBudget: v(L.mkBudget, 2), monthlyUnits: v(L.mkUnits, 2) },
+      salesMode: idOf_(SALES_MODES, v(L.salesMode, 2)),
+      sales: simple,
+      mp: { wb: ch.wb, ozon: ch.ozon, ym: ch.ym }
+    }
+  };
 }
 function digest_(text) {
   return Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, text, Utilities.Charset.UTF_8)
@@ -501,7 +551,8 @@ function summary_(ss, list) {
   sh.getRange(1, 1).setValue('Сводка по продуктам — обновляется автоматически').setFontWeight('bold').setFontSize(14);
   sh.getRange(2, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground(C_HEAD).setWrap(true);
   sh.getRange(3, 1, data.length, 1).setValues(data.map(function (line) { return [line[0]]; }));
-  sh.getRange(3, 2, data.length, head.length - 1).setFormulas(data.map(function (line) { return line.slice(1); }));
+  var sep = sep_(ss);
+  sh.getRange(3, 2, data.length, head.length - 1).setFormulas(data.map(function (line) { return line.slice(1).map(function (f) { return f ? loc_(f, sep) : ''; }); }));
   rows.forEach(function (row, ri) { if (row[2]) sh.getRange(ri + 3, 2, 1, head.length - 1).setNumberFormat(row[2]); });
   sh.getRange(5, 1, 1, head.length).setFontWeight('bold').setBackground(C_KEY);
   if (multi) sh.getRange(3, head.length, data.length, 1).setBackground(C_SUB).setFontWeight('bold');
