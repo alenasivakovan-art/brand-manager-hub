@@ -1021,6 +1021,7 @@
         '<div class="field" style="flex:1 1 200px"><label for="cf-name">Название</label><input class="input" id="cf-name" data-cf-meta="name" value="' + esc(m.name) + '"></div>' +
         '<div class="field" style="flex:1 1 180px"><label for="cf-project">Проект</label><select class="select" id="cf-project" data-cf-meta="projectId">' + projOpts + '</select></div>' +
         '<div class="row" style="align-self:flex-end"><button type="button" class="btn" data-cf-new>' + icon('plus', 'sm') + 'Новый</button><button type="button" class="btn ghost" data-cf-dup>' + icon('copy', 'sm') + 'Копия</button><button type="button" class="icon-btn bordered" data-cf-delmodel aria-label="Удалить расчёт">' + icon('trash', 'sm') + '</button></div></div>' +
+      '<div class="gs-status" data-gs-status>' + (BM.gsheet ? BM.gsheet.statusHtml() : '') + '</div>' +
       '<nav class="tabs" aria-label="Режим">' + [['real', 'calc', 'Реальные цифры'], ['flow', 'flag', 'Ход разработки'], ['import', 'box', 'Импорт из Китая'], ['sim', 'sparkle', 'Симуляции'], ['sum', 'grid', 'Сводка и выгрузка']].map(function (x) {
         return '<button type="button" class="tab' + (tab === x[0] ? ' active' : '') + '" data-cf-tab="' + x[0] + '"' + (tab === x[0] ? ' aria-current="page"' : '') + '>' + icon(x[1], 'sm') + x[2] + '</button>';
       }).join('') + '</nav>' +
@@ -1051,7 +1052,7 @@
     var t = document.getElementById('cf-tornado'); if (t) t.innerHTML = tornadoHtml(m);
     var c = document.getElementById('cf-batchcurve'); if (c) c.innerHTML = batchCurveHtml(m);
   }
-  var save = BM.debounce(function (m) { m.updatedAt = Date.now(); BM.persist(); }, 500);
+  var save = BM.debounce(function (m) { m.updatedAt = Date.now(); BM.persist(); if (BM.gsheet) BM.gsheet.schedule(); }, 500);
 
   BM.costMount = function () {
     var page = document.querySelector('.cf-page');
@@ -1110,11 +1111,11 @@
         save(m); BM.render(); return;
       }
       if ((t = e.target.closest('[data-cf-del]'))) { getPath(m.base, t.dataset.cfDel).splice(+t.dataset.i, 1); save(m); BM.render(); return; }
-      if (e.target.closest('[data-cf-new]')) { var nm = defaultModel('Новый продукт'); models().push(nm); BM.persist(); BM.go('#/cost/' + nm.id); return; }
-      if (e.target.closest('[data-cf-dup]')) { var cp = JSON.parse(JSON.stringify(m)); cp.id = BM.uid(); cp.name = m.name + ' (копия)'; models().push(cp); BM.persist(); BM.go('#/cost/' + cp.id); return; }
+      if (e.target.closest('[data-cf-new]')) { var nm = defaultModel('Новый продукт'); models().push(nm); BM.persist(); if (BM.gsheet) BM.gsheet.schedule(); BM.go('#/cost/' + nm.id); return; }
+      if (e.target.closest('[data-cf-dup]')) { var cp = JSON.parse(JSON.stringify(m)); cp.id = BM.uid(); cp.name = m.name + ' (копия)'; delete cp.gsSnap; delete cp.gsBrand; models().push(cp); BM.persist(); if (BM.gsheet) BM.gsheet.schedule(); BM.go('#/cost/' + cp.id); return; }
       if (e.target.closest('[data-cf-delmodel]')) {
         BM.confirm('Удалить расчёт «' + m.name + '»?', 'Все цифры и сценарии этого расчёта будут удалены.', 'Удалить', function () {
-          BM.state.costModels = models().filter(function (x) { return x.id !== m.id; }); BM.persist(); BM.go('#/cost');
+          BM.state.costModels = models().filter(function (x) { return x.id !== m.id; }); if (BM.gsheet) BM.gsheet.removeModel(m.id); BM.persist(); BM.go('#/cost');
         });
         return;
       }

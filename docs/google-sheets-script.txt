@@ -1,0 +1,502 @@
+/**
+ * Бренд-менеджер ⇄ Google Таблица: себестоимость и юнит-экономика.
+ *
+ * Как подключить (один раз):
+ * 1. Создайте пустую Google Таблицу.
+ * 2. Расширения → Apps Script. Удалите всё в файле Code.gs и вставьте этот код. Сохраните.
+ * 3. Вверху выберите функцию setup и нажмите «Выполнить». Разрешите доступ к своей таблице.
+ * 4. «Начать развертывание» → «Новое развертывание» → тип «Веб-приложение».
+ *    Запуск от имени: «Я». Доступ: «Все». Нажмите «Начать развертывание» и скопируйте URL.
+ * 5. В таблице: меню «Бренд-менеджер» → «Ключ подключения». Скопируйте ключ.
+ * 6. На сайте: Настройки → Google Таблица → вставьте URL и ключ → «Подключить».
+ *
+ * Голубые ячейки — исходные данные: правьте их, сайт подтянет изменения.
+ * Серые — формулы. Структуру строк и столбцов на вкладках продуктов не меняйте.
+ */
+
+var LAYOUT_VERSION = 1;
+var META = '_meta';
+var SUMMARY = 'Сводка';
+var CURRENCIES = ['RUB', 'USD', 'EUR', 'CNY'];
+var CHANNELS = [
+  { id: 'simple', label: 'Общая прикидка' },
+  { id: 'wb', label: 'Wildberries' },
+  { id: 'ozon', label: 'Ozon' },
+  { id: 'ym', label: 'Яндекс Маркет' }
+];
+var CH_FIELDS = [
+  ['enabled', 'Учитывать'], ['price', 'Цена продажи, ₽'], ['commissionPct', 'Комиссия, %'], ['acquiringPct', 'Эквайринг, %'],
+  ['logistics', 'Логистика до покупателя, ₽/заказ'], ['logisticsCoef', 'Коэффициент склада, ×'], ['lastMilePct', 'Последняя миля, % от цены'],
+  ['processing', 'Обработка отправления, ₽/заказ'], ['returnCost', 'Обратная логистика невыкупа, ₽'], ['storage', 'Хранение, ₽/шт.'],
+  ['acceptance', 'Платная приёмка, ₽/шт.'], ['buyoutPct', 'Доля выкупа, %'], ['drrPct', 'ДРР (реклама), %']
+];
+// Fields of the simple estimate on the site; other cells of that column are fixed.
+var SIMPLE_MAP = { enabled: 'enabled', price: 'price', commissionPct: 'commissionPct', logistics: 'mpLogistics', returnCost: 'returnCost', storage: 'storagePerUnit', buyoutPct: 'buyoutPct', drrPct: 'drrPct' };
+var SIMPLE_FIXED = { acquiringPct: 0, logisticsCoef: 1, lastMilePct: 0, processing: 0, acceptance: 0 };
+var STAGES = [
+  ['brand', 'Концепция и бренд'], ['formula', 'Рецептура и образцы'], ['design', 'Дизайн и упаковка'], ['cert', 'Сертификация'],
+  ['purchase', 'Закупка сырья и тары'], ['production', 'Производство партии'], ['logistics', 'Маркировка и доставка на склад'], ['launch', 'Запуск продаж']
+];
+var TAX_MODES = [['income', 'доходы'], ['profit', 'прибыль']];
+var SALES_MODES = [['simple', 'Общая прикидка'], ['mp', 'По площадкам']];
+
+var C_INPUT = '#E7F0FD', C_CALC = '#F3F4F1', C_HEAD = '#DCE6D2', C_SUB = '#EEF2EA', C_KEY = '#FFF4D6';
+var F_RUB2 = '#,##0.00 "₽"', F_RUB0 = '#,##0 "₽"', F_PCT = '0.0"%"', F_INT = '#,##0';
+
+// ---------- menu & setup ----------
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu('Бренд-менеджер')
+    .addItem('Ключ подключения', 'showKey')
+    .addItem('Первичная настройка', 'setup')
+    .addToUi();
+}
+
+function setup() {
+  var props = PropertiesService.getScriptProperties();
+  if (!props.getProperty('KEY')) props.setProperty('KEY', Utilities.getUuid().replace(/-/g, ''));
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  props.setProperty('SS_ID', ss.getId());
+  metaSheet_(ss);
+  if (!ss.getSheetByName(SUMMARY)) {
+    var sum = ss.insertSheet(SUMMARY, 0);
+    sum.getRange('A1').setValue('Сводка появится после подключения сайта').setFontWeight('bold');
+  }
+  showKey();
+}
+
+function showKey() {
+  var key = PropertiesService.getScriptProperties().getProperty('KEY');
+  var msg = key ? 'Ключ подключения для сайта:\n\n' + key + '\n\nВставьте его на сайте: Настройки → Google Таблица.' : 'Сначала выполните «Первичная настройка».';
+  Logger.log(msg);
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
+}
+
+// Any manual edit bumps the change stamp so the site knows to pull.
+function onEdit(e) {
+  try { if (e && e.range && e.range.getSheet().getName() !== META) bump_(e.source); } catch (err) {}
+}
+
+// ---------- web app ----------
+function doPost(e) {
+  var p = {};
+  try { p = JSON.parse(e.postData.contents); } catch (x) {}
+  return handle_(p);
+}
+function doGet(e) { return handle_(e.parameter || {}); }
+
+function handle_(p) {
+  var out;
+  try {
+    var key = PropertiesService.getScriptProperties().getProperty('KEY');
+    if (!key || p.key !== key) throw new Error('Неверный ключ подключения');
+    var ss = spreadsheet_();
+    if (p.action === 'ping') out = { ok: true, url: ss.getUrl(), name: ss.getName() };
+    else if (p.action === 'pull') out = pull_(ss, p.since);
+    else if (p.action === 'push') {
+      var lock = LockService.getScriptLock();
+      lock.waitLock(25000);
+      try { out = push_(ss, p); } finally { lock.releaseLock(); }
+    } else throw new Error('Неизвестное действие');
+  } catch (err) {
+    out = { ok: false, error: String(err && err.message || err) };
+  }
+  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function spreadsheet_() {
+  var ss = null;
+  try { ss = SpreadsheetApp.getActiveSpreadsheet(); } catch (e) {}
+  if (!ss) ss = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('SS_ID'));
+  return ss;
+}
+
+// ---------- meta ----------
+function metaSheet_(ss) {
+  var sh = ss.getSheetByName(META);
+  if (!sh) {
+    sh = ss.insertSheet(META);
+    sh.getRange('A1:B1').setValues([['stamp', String(Date.now())]]);
+    sh.getRange('A3:G3').setValues([['id', 'gid', 'name', 'capIng', 'capPack', 'capOnce', 'version']]);
+    sh.hideSheet();
+  }
+  return sh;
+}
+function stamp_(ss) { return String(metaSheet_(ss).getRange('B1').getValue()); }
+function bump_(ss) { metaSheet_(ss).getRange('B1').setValue(String(Date.now())); }
+function readMeta_(ss) {
+  var sh = metaSheet_(ss), last = sh.getLastRow();
+  if (last < 4) return [];
+  return sh.getRange(4, 1, last - 3, 7).getValues().filter(function (r) { return r[0]; }).map(function (r) {
+    return { id: String(r[0]), gid: Number(r[1]), name: String(r[2]), capIng: Number(r[3]), capPack: Number(r[4]), capOnce: Number(r[5]), version: Number(r[6]) };
+  });
+}
+function writeMeta_(ss, list) {
+  var sh = metaSheet_(ss), last = sh.getLastRow();
+  if (last >= 4) sh.getRange(4, 1, last - 3, 7).clearContent();
+  if (list.length) sh.getRange(4, 1, list.length, 7).setValues(list.map(function (m) { return [m.id, m.gid, m.name, m.capIng, m.capPack, m.capOnce, m.version]; }));
+}
+function sheetByGid_(ss, gid) {
+  var all = ss.getSheets();
+  for (var i = 0; i < all.length; i++) if (all[i].getSheetId() === gid) return all[i];
+  return null;
+}
+
+// ---------- layout ----------
+function layout_(capIng, capPack, capOnce) {
+  var L = { capIng: capIng, capPack: capPack, capOnce: capOnce };
+  L.ingH = 16; L.ing0 = 18; L.ingT = L.ing0 + capIng;
+  L.packH = L.ingT + 2; L.pack0 = L.packH + 2; L.packT = L.pack0 + capPack;
+  L.prodH = L.packT + 2; L.fill = L.prodH + 1; L.labor = L.prodH + 2; L.setup = L.prodH + 3; L.prodU = L.prodH + 4;
+  L.onceH = L.prodU + 2; L.once0 = L.onceH + 2; L.onceT = L.once0 + capOnce;
+  L.markH = L.onceT + 2; L.code = L.markH + 1; L.apply = L.markH + 2; L.inbound = L.markH + 3; L.fulfil = L.markH + 4;
+  L.costH = L.fulfil + 2; L.c = L.costH + 1;
+  L.taxH = L.c + 16; L.taxMode = L.taxH + 1; L.taxRate = L.taxH + 2; L.mkBudget = L.taxH + 3; L.mkUnits = L.taxH + 4; L.mkUnit = L.taxH + 5;
+  L.salesH = L.mkUnit + 2; L.salesMode = L.salesH + 1; L.chHead = L.salesH + 2; L.in0 = L.chHead + 1;
+  L.resH = L.in0 + CH_FIELDS.length; L.res0 = L.resH + 1; L.end = L.res0 + 14;
+  return L;
+}
+var COST_ROWS = [
+  'Сырьё', 'Упаковка', 'Производство и наладка', 'Маркировка', 'Логистика до склада', 'Переменные затраты на единицу',
+  'Себестоимость без разовых затрат (с учётом брака)', '    в т.ч. брак', 'Амортизация разовых затрат на единицу', 'Себестоимость с разовыми затратами',
+  'СЕБЕСТОИМОСТЬ ЕДИНИЦЫ В РАСЧЁТЕ', 'Разовые затраты на запуск, всего', 'Деньги на следующую партию', 'Деньги на первую партию', 'Годных единиц в партии'
+];
+var RES_ROWS = [
+  'Себестоимость единицы', 'Комиссия', 'Эквайринг', 'Логистика с учётом невыкупа', 'Обратная логистика', 'Хранение и приёмка', 'Реклама (ДРР)',
+  'Маркетинг вне площадки', 'Расходы до налога', 'Налог', 'ПРИБЫЛЬ С ПРОДАЖИ', 'Маржа', 'Прибыль с партии', 'ROI первой партии', 'Окупаемость вложений, шт.'
+];
+var COLS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+
+function rate_(cell) { return 'IF(' + cell + '="USD",$B$11,IF(' + cell + '="EUR",$B$12,IF(' + cell + '="CNY",$B$13,1)))'; }
+
+// Builds the static part of a product tab: labels, formulas, formats, validation.
+function build_(sh, L) {
+  sh.clear();
+  sh.getDataRange().clearDataValidations();
+  if (sh.getMaxRows() < L.end + 5) sh.insertRowsAfter(sh.getMaxRows(), L.end + 5 - sh.getMaxRows());
+  var g = [], r, i, k;
+  for (r = 0; r < L.end; r++) g.push(['', '', '', '', '', '', '', '']);
+  var set = function (row, col, v) { g[row - 1][col - 1] = v; };
+  var DEF = 'MIN(90,MAX(0,$B$10))/100';
+
+  set(3, 1, 'Голубые ячейки — исходные данные: их можно менять, сайт подтянет изменения. Серые — формулы. Структуру строк и столбцов не меняйте.');
+  set(5, 1, 'ПАРАМЕТРЫ ПРОДУКТА');
+  [['Объём единицы', 6], ['Плотность, г/мл', 7], ['Масса продукта, г', 8], ['Размер партии, шт.', 9], ['Брак готовой продукции, %', 10],
+    ['Курс USD, ₽', 11], ['Курс EUR, ₽', 12], ['Курс CNY, ₽', 13], ['Распределять разовые затраты на себестоимость', 14]].forEach(function (x) { set(x[1], 1, x[0]); });
+  set(8, 2, '=IF(C6="г",B6,B6*B7)');
+
+  set(L.ingH, 1, 'СЫРЬЁ И РЕЦЕПТУРА');
+  ['Компонент', '% в формуле', 'Цена за кг', 'Валюта', 'Потери, %', '₽ на единицу', '₽ на партию', 'Импорт, ₽ на ед. (с сайта)'].forEach(function (h, c) { set(L.ingH + 1, c + 1, h); });
+  for (i = 0; i < L.capIng; i++) {
+    r = L.ing0 + i;
+    set(r, 6, '=IF(A' + r + '="","",IF(H' + r + '<>"",H' + r + ',$B$8*B' + r + '/100*C' + r + '*' + rate_('D' + r) + '/1000*(1+E' + r + '/100)))');
+    set(r, 7, '=IF(A' + r + '="","",F' + r + '*MAX(1,$B$9))');
+  }
+  set(L.ingT, 1, 'Итого сырьё (сумма долей должна быть 100%)');
+  set(L.ingT, 2, '=SUM(B' + L.ing0 + ':B' + (L.ingT - 1) + ')');
+  set(L.ingT, 6, '=SUM(F' + L.ing0 + ':F' + (L.ingT - 1) + ')');
+  set(L.ingT, 7, '=SUM(G' + L.ing0 + ':G' + (L.ingT - 1) + ')');
+
+  set(L.packH, 1, 'УПАКОВКА');
+  ['Компонент', 'Цена за шт.', 'Валюта', 'Брак, %', '', '₽ на единицу', '₽ на партию', 'Импорт, ₽ на ед. (с сайта)'].forEach(function (h, c) { set(L.packH + 1, c + 1, h); });
+  for (i = 0; i < L.capPack; i++) {
+    r = L.pack0 + i;
+    set(r, 6, '=IF(A' + r + '="","",IF(H' + r + '<>"",H' + r + ',B' + r + '*' + rate_('C' + r) + '*(1+D' + r + '/100)))');
+    set(r, 7, '=IF(A' + r + '="","",F' + r + '*MAX(1,$B$9))');
+  }
+  set(L.packT, 1, 'Итого упаковка');
+  set(L.packT, 6, '=SUM(F' + L.pack0 + ':F' + (L.packT - 1) + ')');
+  set(L.packT, 7, '=SUM(G' + L.pack0 + ':G' + (L.packT - 1) + ')');
+
+  set(L.prodH, 1, 'ПРОИЗВОДСТВО');
+  set(L.fill, 1, 'Розлив и сборка, ₽/шт.'); set(L.labor, 1, 'Работа и контроль, ₽/шт.'); set(L.setup, 1, 'Наладка линии на партию, ₽');
+  set(L.prodU, 1, 'Производство на единицу'); set(L.prodU, 2, '=B' + L.fill + '+B' + L.labor + '+B' + L.setup + '/MAX(1,$B$9)');
+
+  set(L.onceH, 1, 'РАЗОВЫЕ ЗАТРАТЫ НА ЗАПУСК (не входят в себестоимость, если не распределять)');
+  ['Статья', 'Сумма, ₽', 'На сколько партий', 'Этап', '', '₽ на единицу при распределении', '', ''].forEach(function (h, c) { set(L.onceH + 1, c + 1, h); });
+  for (i = 0; i < L.capOnce; i++) {
+    r = L.once0 + i;
+    set(r, 6, '=IF(A' + r + '="","",B' + r + '/(MAX(1,C' + r + ')*MAX(1,$B$9)))');
+  }
+  set(L.onceT, 1, 'Итого разовые затраты');
+  set(L.onceT, 2, '=SUM(B' + L.once0 + ':B' + (L.onceT - 1) + ')');
+  set(L.onceT, 6, '=SUM(F' + L.once0 + ':F' + (L.onceT - 1) + ')');
+
+  set(L.markH, 1, 'МАРКИРОВКА И ЛОГИСТИКА ДО СКЛАДА');
+  set(L.code, 1, 'Код Честного знака, ₽/шт.'); set(L.apply, 1, 'Нанесение кода, ₽/шт.');
+  set(L.inbound, 1, 'Доставка партии до склада маркетплейса, ₽'); set(L.fulfil, 1, 'Фулфилмент и упаковка поставки, ₽/шт.');
+
+  set(L.costH, 1, 'СЕБЕСТОИМОСТЬ ЕДИНИЦЫ');
+  var c = L.c;
+  COST_ROWS.forEach(function (label, j) { set(c + j, 1, label); });
+  var F = [
+    '=F' + L.ingT, '=F' + L.packT, '=B' + L.prodU, '=B' + L.code + '+B' + L.apply, '=B' + L.inbound + '/MAX(1,$B$9)+B' + L.fulfil,
+    '=SUM(B' + c + ':B' + (c + 4) + ')', '=B' + (c + 5) + '/(1-' + DEF + ')', '=B' + (c + 6) + '-B' + (c + 5),
+    '=F' + L.onceT + '/(1-' + DEF + ')', '=B' + (c + 6) + '+B' + (c + 8), '=IF($B$14,B' + (c + 9) + ',B' + (c + 6) + ')', '=B' + L.onceT,
+    '=(B' + c + '+B' + (c + 1) + '+B' + L.fill + '+B' + L.labor + '+B' + (c + 3) + '+B' + L.fulfil + ')*MAX(1,$B$9)+B' + L.setup + '+B' + L.inbound,
+    '=B' + (c + 12) + '+B' + (c + 11), '=MAX(1,$B$9)*(1-' + DEF + ')'
+  ];
+  F.forEach(function (f, j) { set(c + j, 2, f); });
+
+  set(L.taxH, 1, 'НАЛОГ И МАРКЕТИНГ');
+  set(L.taxMode, 1, 'Налог считается от (доходы / прибыль)'); set(L.taxRate, 1, 'Ставка налога, %');
+  set(L.mkBudget, 1, 'Маркетинг вне площадки, ₽ в месяц'); set(L.mkUnits, 1, 'Плановые продажи, шт. в месяц');
+  set(L.mkUnit, 1, 'Маркетинг вне площадки на единицу'); set(L.mkUnit, 2, '=B' + L.mkBudget + '/MAX(1,B' + L.mkUnits + ')');
+
+  set(L.salesH, 1, 'ПРОДАЖА НА МАРКЕТПЛЕЙСАХ');
+  set(L.salesMode, 1, 'Формат расчёта на сайте');
+  set(L.chHead, 1, 'Исходные данные на одну продажу');
+  CHANNELS.forEach(function (ch, j) { set(L.chHead, j + 2, ch.label); });
+  CH_FIELDS.forEach(function (f, j) { set(L.in0 + j, 1, f[1]); });
+  set(L.resH, 1, 'РАСЧЁТ НА ОДНУ ПРОДАННУЮ ЕДИНИЦУ');
+  RES_ROWS.forEach(function (label, j) { set(L.res0 + j, 1, label); });
+  var row = function (field) { for (var q = 0; q < CH_FIELDS.length; q++) if (CH_FIELDS[q][0] === field) return L.in0 + q; };
+  for (k = 0; k < CHANNELS.length; k++) {
+    var X = COLS[k + 1], cell = function (field) { return X + row(field); }, R = function (j) { return X + (L.res0 + j); };
+    var P = cell('price'), BUY = 'MAX(1,' + cell('buyoutPct') + ')/100';
+    var f = [
+      '$B$' + (c + 10),
+      P + '*' + cell('commissionPct') + '/100',
+      P + '*' + cell('acquiringPct') + '/100',
+      '(' + cell('logistics') + '*IF(' + cell('logisticsCoef') + '=0,1,' + cell('logisticsCoef') + ')+' + P + '*' + cell('lastMilePct') + '/100+' + cell('processing') + ')/(' + BUY + ')',
+      cell('returnCost') + '*(1-' + BUY + ')/(' + BUY + ')',
+      cell('storage') + '+' + cell('acceptance'),
+      P + '*' + cell('drrPct') + '/100',
+      '$B$' + L.mkUnit,
+      'SUM(' + R(0) + ':' + R(7) + ')',
+      'IF($B$' + L.taxMode + '="прибыль",MAX(0,' + P + '-' + R(8) + '),' + P + ')*$B$' + L.taxRate + '/100',
+      P + '-' + R(8) + '-' + R(9),
+      'IF(' + P + '>0,' + R(10) + '/' + P + '*100,0)',
+      R(10) + '*$B$' + (c + 14),
+      'IF($B$' + (c + 13) + '>0,' + R(12) + '/$B$' + (c + 13) + '*100,0)',
+      'IF(' + P + '-(' + R(8) + '+' + R(9) + '-' + R(0) + ')>0,ROUNDUP($B$' + (c + 13) + '/(' + P + '-(' + R(8) + '+' + R(9) + '-' + R(0) + ')),0),"не окупится")'
+    ];
+    f.forEach(function (expr, j) { set(L.res0 + j, k + 2, '=IF(' + cell('enabled') + ',' + expr + ',"")'); });
+  }
+
+  sh.getRange(1, 1, L.end, 8).setValues(g);
+
+  // formatting
+  sh.setColumnWidth(1, 330);
+  for (i = 2; i <= 8; i++) sh.setColumnWidth(i, 130);
+  sh.getRange('A1').setFontSize(16).setFontWeight('bold');
+  sh.getRange('A3').setFontColor('#6B6B6B').setFontStyle('italic');
+  [5, L.ingH, L.packH, L.prodH, L.onceH, L.markH, L.costH, L.taxH, L.salesH, L.resH].forEach(function (hr) {
+    sh.getRange(hr, 1, 1, 8).setBackground(C_HEAD).setFontWeight('bold');
+  });
+  [L.ingH + 1, L.packH + 1, L.onceH + 1, L.chHead].forEach(function (hr) { sh.getRange(hr, 1, 1, 8).setBackground(C_SUB).setFontWeight('bold').setWrap(true); });
+  var input = [], calc = [];
+  input.push('B2', 'B6:C6', 'B7', 'B9:B14');
+  calc.push('B8');
+  input.push('A' + L.ing0 + ':E' + (L.ingT - 1)); calc.push('F' + L.ing0 + ':H' + L.ingT, 'B' + L.ingT);
+  input.push('A' + L.pack0 + ':D' + (L.packT - 1)); calc.push('F' + L.pack0 + ':H' + L.packT);
+  input.push('B' + L.fill + ':B' + L.setup); calc.push('B' + L.prodU);
+  input.push('A' + L.once0 + ':D' + (L.onceT - 1)); calc.push('F' + L.once0 + ':F' + L.onceT, 'B' + L.onceT);
+  input.push('B' + L.code + ':B' + L.fulfil);
+  calc.push('B' + c + ':B' + (c + 14));
+  input.push('B' + L.taxMode + ':B' + L.mkUnits); calc.push('B' + L.mkUnit);
+  input.push('B' + L.salesMode, 'B' + L.in0 + ':E' + (L.resH - 1));
+  calc.push('B' + L.res0 + ':E' + (L.res0 + 14));
+  sh.getRangeList(input).setBackground(C_INPUT);
+  sh.getRangeList(calc).setBackground(C_CALC);
+  // the simple estimate has no acquiring, warehouse coefficient, last mile, processing or acceptance
+  ['acquiringPct', 'logisticsCoef', 'lastMilePct', 'processing', 'acceptance'].forEach(function (fld) { sh.getRange('B' + row(fld)).setBackground(C_CALC).setFontColor('#9A9A9A'); });
+  sh.getRangeList(['F' + L.ing0 + ':F' + L.ingT, 'F' + L.pack0 + ':F' + L.packT, 'H' + L.ing0 + ':H' + L.ingT, 'H' + L.pack0 + ':H' + L.packT, 'F' + L.once0 + ':F' + L.onceT,
+    'B' + L.prodU, 'B' + c + ':B' + (c + 10), 'B' + L.mkUnit, 'B' + L.res0 + ':E' + (L.res0 + 10)]).setNumberFormat(F_RUB2);
+  sh.getRangeList(['G' + L.ing0 + ':G' + L.ingT, 'G' + L.pack0 + ':G' + L.packT, 'B' + L.onceT, 'B' + (c + 11) + ':B' + (c + 13), 'B' + (L.res0 + 12) + ':E' + (L.res0 + 12)]).setNumberFormat(F_RUB0);
+  sh.getRangeList(['B' + (L.res0 + 11) + ':E' + (L.res0 + 11), 'B' + (L.res0 + 13) + ':E' + (L.res0 + 13), 'B' + L.ingT]).setNumberFormat(F_PCT);
+  sh.getRangeList(['B' + (c + 14), 'B' + (L.res0 + 14) + ':E' + (L.res0 + 14)]).setNumberFormat(F_INT);
+  sh.getRangeList(['A' + (c + 10) + ':B' + (c + 10), 'A' + (L.res0 + 10) + ':E' + (L.res0 + 10)]).setFontWeight('bold').setBackground(C_KEY);
+
+  // validation
+  var list = function (vals) { return SpreadsheetApp.newDataValidation().requireValueInList(vals, true).setAllowInvalid(false).build(); };
+  sh.getRange('C6').setDataValidation(list(['мл', 'г']));
+  sh.getRange('B14').insertCheckboxes();
+  sh.getRange('D' + L.ing0 + ':D' + (L.ingT - 1)).setDataValidation(list(CURRENCIES));
+  sh.getRange('C' + L.pack0 + ':C' + (L.packT - 1)).setDataValidation(list(CURRENCIES));
+  sh.getRange('D' + L.once0 + ':D' + (L.onceT - 1)).setDataValidation(list(STAGES.map(function (s) { return s[1]; })));
+  sh.getRange('B' + L.taxMode).setDataValidation(list(TAX_MODES.map(function (s) { return s[1]; })));
+  sh.getRange('B' + L.salesMode).setDataValidation(list(SALES_MODES.map(function (s) { return s[1]; })));
+  sh.getRange('B' + L.in0 + ':E' + L.in0).insertCheckboxes();
+  sh.setFrozenRows(0);
+}
+
+// ---------- push: site → sheet ----------
+function capsFor_(inp) {
+  return { ing: Math.max(15, (inp.ingredients || []).length + 3), pack: Math.max(10, (inp.packaging || []).length + 3), once: Math.max(10, (inp.oneOff || []).length + 3) };
+}
+function clean_(v) { return typeof v === 'string' ? v.replace(/^[=+\-@]+/, '') : v; }
+function label_(pairs, id) { for (var i = 0; i < pairs.length; i++) if (pairs[i][0] === id) return pairs[i][1]; return pairs[0][1]; }
+function idOf_(pairs, label) { label = String(label || '').trim().toLowerCase(); for (var i = 0; i < pairs.length; i++) if (pairs[i][1].toLowerCase() === label || pairs[i][0] === label) return pairs[i][0]; return pairs[0][0]; }
+
+function uniqueName_(ss, wanted, self) {
+  var base = String(wanted || 'Продукт').replace(/[\[\]\*\?\/\\:]/g, ' ').trim().slice(0, 90) || 'Продукт';
+  var name = base, n = 2;
+  while (true) {
+    var other = ss.getSheetByName(name);
+    if (!other || (self && other.getSheetId() === self.getSheetId())) return name;
+    if (name === SUMMARY || name === META) { name = base + ' (' + n++ + ')'; continue; }
+    name = base + ' (' + n++ + ')';
+  }
+}
+
+function writeInputs_(sh, L, p) {
+  var inp = p.inputs, ov = p.overrides || {}, i;
+  sh.getRange('A1').setValue(clean_(inp.name || 'Продукт'));
+  sh.getRange('B2').setValue(clean_(p.brand || ''));
+  sh.getRange('A2').setValue('Бренд');
+  sh.getRange('A4').setValue(p.note || '').setFontColor('#B4582A');
+  sh.getRange('B6:C6').setValues([[inp.unitVolume, inp.unit === 'г' ? 'г' : 'мл']]);
+  sh.getRange('B7').setValue(inp.density);
+  var r = inp.rates || {};
+  sh.getRange('B9:B14').setValues([[inp.batch], [inp.defectPct], [r.USD], [r.EUR], [r.CNY], [!!inp.includeOneOff]]);
+  var block = function (row0, cap, rows, width, map) {
+    var vals = [];
+    for (i = 0; i < cap; i++) { var x = rows[i]; vals.push(x ? map(x) : new Array(width).fill('')); }
+    sh.getRange(row0, 1, cap, width).setValues(vals);
+  };
+  block(L.ing0, L.capIng, inp.ingredients || [], 5, function (x) { return [clean_(x.name), x.pct, x.price, x.cur || 'RUB', x.loss]; });
+  block(L.pack0, L.capPack, inp.packaging || [], 4, function (x) { return [clean_(x.name), x.price, x.cur || 'RUB', x.scrap]; });
+  block(L.once0, L.capOnce, inp.oneOff || [], 4, function (x) { return [clean_(x.name), x.amount, x.batches, label_(STAGES, x.stage)]; });
+  var ovCol = function (row0, cap, list) { var v = []; for (i = 0; i < cap; i++) v.push([list && list[i] !== undefined && list[i] !== null ? list[i] : '']); sh.getRange(row0, 8, cap, 1).setValues(v); };
+  ovCol(L.ing0, L.capIng, ov.ing); ovCol(L.pack0, L.capPack, ov.pack);
+  var pr = inp.production || {}, mk = inp.marking || {}, lg = inp.logistics || {}, tx = inp.tax || {}, mt = inp.marketing || {};
+  sh.getRange(L.fill, 2, 3, 1).setValues([[pr.fillPerUnit], [pr.laborPerUnit], [pr.setupPerBatch]]);
+  sh.getRange(L.code, 2, 4, 1).setValues([[mk.codePerUnit], [mk.applyPerUnit], [lg.inboundPerBatch], [lg.fulfilPerUnit]]);
+  sh.getRange(L.taxMode, 2, 4, 1).setValues([[label_(TAX_MODES, tx.mode)], [tx.rate], [mt.monthlyBudget], [mt.monthlyUnits]]);
+  sh.getRange(L.salesMode, 2).setValue(label_(SALES_MODES, inp.salesMode));
+  var s = inp.sales || {}, mp = inp.mp || {};
+  var grid = CH_FIELDS.map(function (f) {
+    return CHANNELS.map(function (ch) {
+      if (ch.id === 'simple') {
+        if (SIMPLE_MAP[f[0]]) { var v = s[SIMPLE_MAP[f[0]]]; return f[0] === 'enabled' ? !!v : v; }
+        return SIMPLE_FIXED[f[0]];
+      }
+      var o = mp[ch.id] || {};
+      return f[0] === 'enabled' ? !!o.enabled : o[f[0]];
+    });
+  });
+  sh.getRange(L.in0, 2, CH_FIELDS.length, 4).setValues(grid);
+}
+
+function push_(ss, p) {
+  var meta = readMeta_(ss), byId = {}, i;
+  meta.forEach(function (m) { byId[m.id] = m; });
+  (p.remove || []).forEach(function (id) {
+    var m = byId[id];
+    if (m) { var sh = sheetByGid_(ss, m.gid); if (sh) ss.deleteSheet(sh); delete byId[id]; }
+  });
+  (p.products || []).forEach(function (prod) {
+    var m = byId[prod.id], sh = m ? sheetByGid_(ss, m.gid) : null, caps = capsFor_(prod.inputs);
+    var rebuild = !sh || !m || m.version !== LAYOUT_VERSION || caps.ing > m.capIng || caps.pack > m.capPack || caps.once > m.capOnce;
+    if (!sh) sh = ss.insertSheet(uniqueName_(ss, prod.inputs.name), ss.getSheets().length);
+    else { var nm = uniqueName_(ss, prod.inputs.name, sh); if (sh.getName() !== nm) sh.setName(nm); }
+    if (!rebuild) caps = { ing: m.capIng, pack: m.capPack, once: m.capOnce };
+    var L = layout_(caps.ing, caps.pack, caps.once);
+    if (rebuild) build_(sh, L);
+    writeInputs_(sh, L, prod);
+    byId[prod.id] = { id: prod.id, gid: sh.getSheetId(), name: sh.getName(), capIng: caps.ing, capPack: caps.pack, capOnce: caps.once, version: LAYOUT_VERSION };
+  });
+  // keep the site order
+  var order = p.order || [], list = [];
+  order.forEach(function (id) { if (byId[id]) { list.push(byId[id]); delete byId[id]; } });
+  Object.keys(byId).forEach(function (id) { list.push(byId[id]); });
+  list = list.filter(function (m) { return sheetByGid_(ss, m.gid); });
+  list.forEach(function (m) { m.name = sheetByGid_(ss, m.gid).getName(); });
+  writeMeta_(ss, list);
+  summary_(ss, list);
+  bump_(ss);
+  SpreadsheetApp.flush();
+  return { ok: true, stamp: stamp_(ss), url: ss.getUrl() };
+}
+
+// ---------- pull: sheet → site ----------
+function pull_(ss, since) {
+  var st = stamp_(ss);
+  if (since && String(since) === st) return { ok: true, stamp: st, changed: false, url: ss.getUrl() };
+  var products = readMeta_(ss).map(function (m) {
+    var sh = sheetByGid_(ss, m.gid);
+    if (!sh || m.version !== LAYOUT_VERSION) return null;
+    var L = layout_(m.capIng, m.capPack, m.capOnce);
+    var g = sh.getRange(1, 1, L.end, 8).getValues();
+    var v = function (r, c) { return g[r - 1][c - 1]; };
+    var rows = function (r0, cap, map) { var out = []; for (var i = 0; i < cap; i++) { var r = r0 + i; if (String(v(r, 1)).trim() !== '') out.push(map(r)); } return out; };
+    var ch = {};
+    CHANNELS.forEach(function (c, k) {
+      var o = {};
+      CH_FIELDS.forEach(function (f, j) { o[f[0]] = v(L.in0 + j, k + 2); });
+      ch[c.id] = o;
+    });
+    var simple = {};
+    Object.keys(SIMPLE_MAP).forEach(function (f) { simple[SIMPLE_MAP[f]] = ch.simple[f]; });
+    return {
+      id: m.id,
+      inputs: {
+        name: v(1, 1), unitVolume: v(6, 2), unit: v(6, 3), density: v(7, 2), batch: v(9, 2), defectPct: v(10, 2),
+        rates: { USD: v(11, 2), EUR: v(12, 2), CNY: v(13, 2) }, includeOneOff: v(14, 2) === true,
+        ingredients: rows(L.ing0, L.capIng, function (r) { return { name: v(r, 1), pct: v(r, 2), price: v(r, 3), cur: v(r, 4), loss: v(r, 5) }; }),
+        packaging: rows(L.pack0, L.capPack, function (r) { return { name: v(r, 1), price: v(r, 2), cur: v(r, 3), scrap: v(r, 4) }; }),
+        production: { fillPerUnit: v(L.fill, 2), laborPerUnit: v(L.labor, 2), setupPerBatch: v(L.setup, 2) },
+        oneOff: rows(L.once0, L.capOnce, function (r) { return { name: v(r, 1), amount: v(r, 2), batches: v(r, 3), stage: idOf_(STAGES, v(r, 4)) }; }),
+        marking: { codePerUnit: v(L.code, 2), applyPerUnit: v(L.apply, 2) },
+        logistics: { inboundPerBatch: v(L.inbound, 2), fulfilPerUnit: v(L.fulfil, 2) },
+        tax: { mode: idOf_(TAX_MODES, v(L.taxMode, 2)), rate: v(L.taxRate, 2) },
+        marketing: { monthlyBudget: v(L.mkBudget, 2), monthlyUnits: v(L.mkUnits, 2) },
+        salesMode: idOf_(SALES_MODES, v(L.salesMode, 2)),
+        sales: simple,
+        mp: { wb: ch.wb, ozon: ch.ozon, ym: ch.ym }
+      }
+    };
+  }).filter(function (x) { return x; });
+  return { ok: true, stamp: st, changed: true, products: products, url: ss.getUrl() };
+}
+
+// ---------- summary tab ----------
+function summary_(ss, list) {
+  var sh = ss.getSheetByName(SUMMARY) || ss.insertSheet(SUMMARY, 0);
+  sh.clear();
+  if (!list.length) { sh.getRange('A1').setValue('Нет продуктов'); return; }
+  var q = function (name) { return "'" + name.replace(/'/g, "''") + "'"; };
+  var rows = [
+    ['Бренд', function () { return 'B2'; }, null, null],
+    ['Размер партии, шт.', function () { return 'B9'; }, F_INT, 'SUM'],
+    ['СЕБЕСТОИМОСТЬ ЕДИНИЦЫ', function (L) { return 'B' + (L.c + 10); }, F_RUB2, 'AVERAGE'],
+    ['Себестоимость без разовых затрат', function (L) { return 'B' + (L.c + 6); }, F_RUB2, 'AVERAGE'],
+    ['Себестоимость с разовыми затратами', function (L) { return 'B' + (L.c + 9); }, F_RUB2, 'AVERAGE'],
+    ['Сырьё на единицу', function (L) { return 'B' + L.c; }, F_RUB2, 'AVERAGE'],
+    ['Упаковка на единицу', function (L) { return 'B' + (L.c + 1); }, F_RUB2, 'AVERAGE'],
+    ['Производство на единицу', function (L) { return 'B' + (L.c + 2); }, F_RUB2, 'AVERAGE'],
+    ['Разовые затраты на запуск', function (L) { return 'B' + (L.c + 11); }, F_RUB0, 'SUM'],
+    ['Деньги на первую партию', function (L) { return 'B' + (L.c + 13); }, F_RUB0, 'SUM'],
+    ['Деньги на следующую партию', function (L) { return 'B' + (L.c + 12); }, F_RUB0, 'SUM']
+  ];
+  CHANNELS.forEach(function (ch, k) {
+    var X = COLS[k + 1];
+    rows.push(['Цена · ' + ch.label, function (L) { return X + (L.in0 + 1); }, F_RUB0, 'AVERAGE']);
+    rows.push(['Прибыль с продажи · ' + ch.label, function (L) { return X + (L.res0 + 10); }, F_RUB2, 'AVERAGE']);
+    rows.push(['Маржа · ' + ch.label, function (L) { return X + (L.res0 + 11); }, F_PCT, 'AVERAGE']);
+    rows.push(['Прибыль с партии · ' + ch.label, function (L) { return X + (L.res0 + 12); }, F_RUB0, 'SUM']);
+  });
+  var n = list.length, multi = n > 1;
+  var head = ['Показатель'].concat(list.map(function (m) { return m.name; })).concat(multi ? ['Итого / среднее'] : []);
+  var data = rows.map(function (row, ri) {
+    var line = [row[0]].concat(list.map(function (m) {
+      var L = layout_(m.capIng, m.capPack, m.capOnce);
+      return '=' + q(m.name) + '!' + row[1](L);
+    }));
+    if (multi) {
+      var rr = ri + 3, from = 'B' + rr, to = COLS[n] ? COLS[n] + rr : columnLetter_(n + 1) + rr;
+      line.push(row[3] ? '=IFERROR(' + row[3] + '(' + from + ':' + to + '),"")' : '');
+    }
+    return line;
+  });
+  sh.getRange(1, 1).setValue('Сводка по продуктам — обновляется автоматически').setFontWeight('bold').setFontSize(14);
+  sh.getRange(2, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground(C_HEAD).setWrap(true);
+  sh.getRange(3, 1, data.length, head.length).setValues(data);
+  rows.forEach(function (row, ri) { if (row[2]) sh.getRange(ri + 3, 2, 1, head.length - 1).setNumberFormat(row[2]); });
+  sh.getRange(5, 1, 1, head.length).setFontWeight('bold').setBackground(C_KEY);
+  if (multi) sh.getRange(3, head.length, data.length, 1).setBackground(C_SUB).setFontWeight('bold');
+  sh.setColumnWidth(1, 300);
+  for (var c = 2; c <= head.length; c++) sh.setColumnWidth(c, 150);
+  sh.setFrozenRows(2); sh.setFrozenColumns(1);
+}
+function columnLetter_(n) { var s = ''; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }

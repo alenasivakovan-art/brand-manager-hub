@@ -508,6 +508,23 @@
   };
 
   // ---------- settings ----------
+  function gsheetSettings(s) {
+    var on = !!(s.gsUrl && s.gsKey);
+    return '<section class="card stack" id="gsheet"><div class="card-head" style="margin:0"><h2>' + icon('grid') + 'Google Таблица для себестоимости</h2></div>' +
+      '<p class="muted small">Все расчёты из раздела «Себестоимость» живут и в Google Таблице: на каждый продукт — вкладка с формулами, плюс «Сводка». Правки на сайте уходят в таблицу за пару секунд, правки в таблице появляются на сайте примерно через 10 секунд. Таблицу удобно показать коллегам.</p>' +
+      (on ? '<div class="gs-status" data-gs-status>' + (BM.gsheet ? BM.gsheet.statusHtml() : '') + '</div>' : '') +
+      '<details' + (on ? '' : ' open') + '><summary class="small" style="cursor:pointer;font-weight:600">Как подключить — 5 минут, один раз</summary><ol class="small gs-steps">' +
+        '<li>Создайте пустую таблицу: <a href="https://sheets.new" target="_blank" rel="noopener noreferrer">sheets.new</a>. Назовите её, например, «Себестоимость — бренд».</li>' +
+        '<li>В таблице: <b>Расширения → Apps Script</b>. Удалите всё в файле Code.gs и вставьте код скрипта: <button type="button" class="btn sm soft" data-gs-copy>' + icon('copy', 'sm') + 'Скопировать код</button> <a href="google-sheets-script.txt" target="_blank" rel="noopener">посмотреть</a>. Нажмите «Сохранить».</li>' +
+        '<li>Вверху выберите функцию <b>setup</b> и нажмите <b>Выполнить</b>. Google попросит разрешить скрипту доступ к таблице — разрешите от своего аккаунта.</li>' +
+        '<li><b>Начать развертывание → Новое развертывание</b> → тип <b>Веб-приложение</b>. «Запуск от имени»: <b>Я</b>, «У кого есть доступ»: <b>Все</b>. Нажмите «Начать развертывание» и скопируйте URL веб-приложения.</li>' +
+        '<li>Вернитесь в таблицу и обновите страницу. В меню <b>Бренд-менеджер → Ключ подключения</b> скопируйте ключ.</li>' +
+        '<li>Вставьте URL и ключ ниже и нажмите «Подключить». Сайт сам создаст вкладки со всеми расчётами.</li></ol>' +
+        '<p class="small muted">Ключ — как пароль к таблице: храните его только в этих настройках. Доступ «Все» означает, что веб-приложение ответит тому, у кого есть и адрес, и ключ.</p></details>' +
+      '<form class="form-grid two" data-form="gsheet"><div class="field"><label for="gs-url">URL веб-приложения</label><input class="input" id="gs-url" name="url" value="' + esc(s.gsUrl || '') + '" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" inputmode="url"></div>' +
+        '<div class="field"><label for="gs-key">Ключ подключения</label><input class="input" id="gs-key" name="key" type="password" value="' + esc(s.gsKey || '') + '" autocomplete="off"></div>' +
+        '<div class="actions col-full"><button type="submit" class="btn primary">' + icon('check', 'sm') + (on ? 'Переподключить' : 'Подключить') + '</button>' + (on ? '<button type="button" class="btn ghost" data-gs-off>Отключить</button>' : '') + '</div></form></section>';
+  }
   V.settings = function () {
     var s = BM.settings;
     var themes = [['light', 'Светлая', 'sun'], ['dark', 'Тёмная', 'moon'], ['system', 'Как в системе', 'sliders']];
@@ -524,6 +541,7 @@
         '<div class="field"><label for="s-path">Файл</label><input class="input" id="s-path" name="path" value="' + esc(s.path) + '"></div>' +
         '<div class="field"><label for="s-token">Personal access token</label><input class="input" id="s-token" name="token" type="password" value="' + esc(s.token) + '" placeholder="github_pat_…" autocomplete="off"></div>' +
         '<div class="actions col-full"><button type="submit" class="btn primary">Сохранить</button>' + btn('sync-now', 'Синхронизировать сейчас', { icon: 'refresh' }) + '</div></form></section>' +
+      gsheetSettings(s) +
       '<section class="card stack"><div class="card-head" style="margin:0"><h2>' + icon('download') + 'Резервная копия</h2></div><p class="muted small">Скачайте все папки и проекты одним JSON-файлом или восстановите из него.</p>' +
         '<div class="actions">' + btn('export', 'Скачать копию', { icon: 'download' }) + '<label class="btn" for="import-file">' + icon('upload') + 'Загрузить из файла</label><input type="file" id="import-file" accept="application/json,.json" class="sr-only"></div></section>' +
       '<section class="card stack" style="border-color:var(--danger-soft)"><div class="card-head" style="margin:0"><h2 style="color:var(--danger)">Опасная зона</h2></div><p class="muted small">Удаляет все папки и проекты на этом устройстве. Если включена синхронизация, пустое состояние уйдёт и в GitHub.</p><div>' + btn('reset-all', 'Удалить все данные', { cls: 'danger', icon: 'trash' }) + '</div></section></div>';

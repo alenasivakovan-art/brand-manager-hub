@@ -223,3 +223,14 @@
 .in-leaders li { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 12px; background: var(--tile-fill); border: 1px solid var(--glass-border); }
 .in-leaders p { margin: 0; font-size: 13.5px; color: var(--ink-2); line-height: 1.5; }
 .in-mini { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+
+/* google sheet sync */
+.gs-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 14px; border-radius: 14px; background: var(--tile-fill); border: 1px solid var(--glass-border); font-size: 13px; color: var(--ink-2); }
+.cf-page > .gs-status { margin-bottom: 4px; }
+.gs-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.gs-dot.ok { background: var(--ok); } .gs-dot.busy { background: #C8961F; animation: gs-pulse 1.2s ease-in-out infinite; } .gs-dot.err { background: var(--danger); } .gs-dot.off { background: var(--line-strong); }
+@keyframes gs-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .gs-dot.busy { animation: none; } }
+.gs-link { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 6px; border: none; background: none; color: var(--primary-ink); font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; border-radius: 8px; }
+.gs-link:hover { background: var(--surface-2); }
+.gs-steps { padding-left: 20px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; line-height: 1.55; color: var(--ink-2); }
