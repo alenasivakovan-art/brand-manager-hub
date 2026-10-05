@@ -17,7 +17,7 @@
 // ID таблицы из её адреса (docs.google.com/spreadsheets/d/<ID>/edit). Нужен, только если скрипт создан не из меню таблицы.
 var SPREADSHEET_ID = '';
 
-var LAYOUT_VERSION = 1;
+var LAYOUT_VERSION = 2;
 var META = '_meta';
 var SUMMARY = 'Сводка';
 var CURRENCIES = ['RUB', 'USD', 'EUR', 'CNY'];
@@ -174,9 +174,11 @@ function build_(sh, L) {
   sh.clear();
   sh.getDataRange().clearDataValidations();
   if (sh.getMaxRows() < L.end + 5) sh.insertRowsAfter(sh.getMaxRows(), L.end + 5 - sh.getMaxRows());
-  var g = [], r, i, k;
-  for (r = 0; r < L.end; r++) g.push(['', '', '', '', '', '', '', '']);
-  var set = function (row, col, v) { g[row - 1][col - 1] = v; };
+  // Labels and formulas go in separately: setFormulas always reads English syntax (commas),
+  // while setValues would parse formulas in the spreadsheet locale (semicolons in Russian).
+  var g = [], fg = [], r, i, k;
+  for (r = 0; r < L.end; r++) { g.push(['', '', '', '', '', '', '', '']); fg.push(['', '', '', '', '', '', '', '']); }
+  var set = function (row, col, v) { if (typeof v === 'string' && v.charAt(0) === '=') fg[row - 1][col - 1] = v; else g[row - 1][col - 1] = v; };
   var DEF = 'MIN(90,MAX(0,$B$10))/100';
 
   set(3, 1, 'Голубые ячейки — исходные данные: их можно менять, сайт подтянет изменения. Серые — формулы. Структуру строк и столбцов не меняйте.');
@@ -274,7 +276,9 @@ function build_(sh, L) {
     f.forEach(function (expr, j) { set(L.res0 + j, k + 2, '=IF(' + cell('enabled') + ',' + expr + ',"")'); });
   }
 
-  sh.getRange(1, 1, L.end, 8).setValues(g);
+  sh.getRange(1, 1, L.end, 8).setFormulas(fg);
+  sh.getRange(1, 1, L.end, 1).setValues(g.map(function (row) { return [row[0]]; }));
+  [L.ingH + 1, L.packH + 1, L.onceH + 1, L.chHead].forEach(function (hr) { sh.getRange(hr, 2, 1, 7).setValues([g[hr - 1].slice(1)]); });
 
   // formatting
   sh.setColumnWidth(1, 330);
@@ -496,7 +500,8 @@ function summary_(ss, list) {
   });
   sh.getRange(1, 1).setValue('Сводка по продуктам — обновляется автоматически').setFontWeight('bold').setFontSize(14);
   sh.getRange(2, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground(C_HEAD).setWrap(true);
-  sh.getRange(3, 1, data.length, head.length).setValues(data);
+  sh.getRange(3, 1, data.length, 1).setValues(data.map(function (line) { return [line[0]]; }));
+  sh.getRange(3, 2, data.length, head.length - 1).setFormulas(data.map(function (line) { return line.slice(1); }));
   rows.forEach(function (row, ri) { if (row[2]) sh.getRange(ri + 3, 2, 1, head.length - 1).setNumberFormat(row[2]); });
   sh.getRange(5, 1, 1, head.length).setFontWeight('bold').setBackground(C_KEY);
   if (multi) sh.getRange(3, head.length, data.length, 1).setBackground(C_SUB).setFontWeight('bold');
