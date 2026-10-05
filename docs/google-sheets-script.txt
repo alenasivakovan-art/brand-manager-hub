@@ -14,6 +14,9 @@
  * Серые — формулы. Структуру строк и столбцов на вкладках продуктов не меняйте.
  */
 
+// ID таблицы из её адреса (docs.google.com/spreadsheets/d/<ID>/edit). Нужен, только если скрипт создан не из меню таблицы.
+var SPREADSHEET_ID = '';
+
 var LAYOUT_VERSION = 1;
 var META = '_meta';
 var SUMMARY = 'Сводка';
@@ -54,7 +57,10 @@ function onOpen() {
 function setup() {
   var props = PropertiesService.getScriptProperties();
   if (!props.getProperty('KEY')) props.setProperty('KEY', Utilities.getUuid().replace(/-/g, ''));
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = null;
+  try { ss = SpreadsheetApp.getActiveSpreadsheet(); } catch (e) {}
+  if (!ss && SPREADSHEET_ID) ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  if (!ss) throw new Error('Не найдена таблица: откройте редактор из таблицы (Расширения → Apps Script) или впишите SPREADSHEET_ID в начале кода');
   props.setProperty('SS_ID', ss.getId());
   metaSheet_(ss);
   if (!ss.getSheetByName(SUMMARY)) {
@@ -69,11 +75,6 @@ function showKey() {
   var msg = key ? 'Ключ подключения для сайта:\n\n' + key + '\n\nВставьте его на сайте: Настройки → Google Таблица.' : 'Сначала выполните «Первичная настройка».';
   Logger.log(msg);
   try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
-}
-
-// Any manual edit bumps the change stamp so the site knows to pull.
-function onEdit(e) {
-  try { if (e && e.range && e.range.getSheet().getName() !== META) bump_(e.source); } catch (err) {}
 }
 
 // ---------- web app ----------
@@ -106,7 +107,7 @@ function handle_(p) {
 function spreadsheet_() {
   var ss = null;
   try { ss = SpreadsheetApp.getActiveSpreadsheet(); } catch (e) {}
-  if (!ss) ss = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('SS_ID'));
+  if (!ss) ss = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('SS_ID') || SPREADSHEET_ID);
   return ss;
 }
 
@@ -411,8 +412,6 @@ function push_(ss, p) {
 
 // ---------- pull: sheet → site ----------
 function pull_(ss, since) {
-  var st = stamp_(ss);
-  if (since && String(since) === st) return { ok: true, stamp: st, changed: false, url: ss.getUrl() };
   var products = readMeta_(ss).map(function (m) {
     var sh = sheetByGid_(ss, m.gid);
     if (!sh || m.version !== LAYOUT_VERSION) return null;
@@ -447,7 +446,13 @@ function pull_(ss, since) {
       }
     };
   }).filter(function (x) { return x; });
+  var st = digest_(JSON.stringify(products));
+  if (since && String(since) === st) return { ok: true, stamp: st, changed: false, url: ss.getUrl() };
   return { ok: true, stamp: st, changed: true, products: products, url: ss.getUrl() };
+}
+function digest_(text) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, text, Utilities.Charset.UTF_8)
+    .map(function (b) { return ((b + 256) % 256).toString(16).padStart(2, '0'); }).join('');
 }
 
 // ---------- summary tab ----------
