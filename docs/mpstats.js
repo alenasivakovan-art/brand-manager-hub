@@ -56,8 +56,8 @@
     var m = r.markets[mp]; if (!m) return '';
     return '<div class="mp-kpis">' + Object.keys(m.categories).map(function (k) {
       var c = m.categories[k], q = c.kpi;
-      return '<div class="card mp-kpi"><small>' + esc(c.label) + '</small><b class="num">' + money(q.revenue) + '</b>' +
-        '<div class="mp-kpi-row"><span>к прошлым 30 дням ' + growth(q.growthPct) + '</span><span>неделя ' + growth(q.weekGrowthPct) + '</span></div>' +
+      return '<div class="card mp-kpi"><small>' + esc(c.label) + (m.periods && m.periods.stale ? ' · данные по ' + esc(m.periods.lastData) : '') + '</small><b class="num">' + money(q.revenue) + '</b>' +
+        '<div class="mp-kpi-row"><span>к прошлым ' + ((m.periods && m.periods.len) || 30) + ' дням ' + growth(q.growthPct) + '</span><span>неделя ' + growth(q.weekGrowthPct) + '</span></div>' +
         '<div class="mp-kpi-row"><span>доля в «Красоте» <b class="num">' + pctv(q.beautyShare) + '</b> ' + growth(q.beautyShareDeltaPp, true) + '</span></div>' +
         '<div class="mp-kpi-row muted"><span>товаров с продажами ' + pctv(q.itemsWithSellsPct) + '</span><span>брендов ' + n(q.brandsWithSells) + '</span></div></div>';
     }).join('') + '</div>';
@@ -149,6 +149,86 @@
       vals.map(function (v, i) { return '<circle cx="' + X(i) + '" cy="' + Y(v) + '" r="8" class="cf-hit" data-tip="' + esc(ws[i].id + ': ' + v + '%') + '"/>'; }).join('') + '</svg>';
   }
 
+  // ---------- top-10 dynamics ----------
+  var GROUP_ORDER = ['cream', 'serum', 'toner', 'cleanse', 'hair'];
+  var STATUS = {
+    'растёт': 'up', 'падает': 'down', 'новый в топ-10': 'new', 'вернулся в топ-10': 'new', 'выбыл из топ-10': 'out', 'был в топ-10 раньше': 'out', 'стабильно': 'flat'
+  };
+  var MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+  function wlabel(w) {
+    var a = new Date(w.d1 + 'T00:00:00Z'), b = new Date(w.d2 + 'T00:00:00Z');
+    return a.getUTCDate() + (a.getUTCMonth() !== b.getUTCMonth() ? ' ' + MONTHS[a.getUTCMonth()] : '') + '–' + b.getUTCDate() + ' ' + MONTHS[b.getUTCMonth()];
+  }
+  function short(name, n) { name = String(name || ''); return name.length > n ? name.slice(0, n - 1) + '…' : name; }
+  function bump(G, weeks, mode) {
+    var list = G.products.filter(function (x) { return x.ranks.some(function (r) { return r != null; }); });
+    var nW = weeks.length, last = nW - 1;
+    var W = 980, H = 470, pl = 70, pr = 330, pt = 34, pb = 26;
+    var X = function (i) { return pl + i / (nW - 1) * (W - pl - pr); };
+    var Y, ticks;
+    if (mode === 'revenue') {
+      var max = Math.max.apply(null, list.map(function (x) { return Math.max.apply(null, x.revenue.map(function (v) { return v || 0; })); }).concat([1]));
+      Y = function (v) { return pt + (1 - (v || 0) / max) * (H - pt - pb); };
+      ticks = [0, max / 2, max].map(function (v) { return '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + Y(v) + '" y2="' + Y(v) + '" class="cf-grid"/><text x="' + (pl - 10) + '" y="' + Y(v) + '" class="cf-ax" text-anchor="end" dominant-baseline="middle">' + money(v) + '</text>'; }).join('');
+    } else {
+      Y = function (r) { return pt + ((r == null ? 11.4 : r) - 1) / 10.4 * (H - pt - pb); };
+      ticks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(function (r) { return '<text x="' + (pl - 12) + '" y="' + Y(r) + '" class="cf-ax" text-anchor="end" dominant-baseline="middle">' + r + '</text>'; }).join('') +
+        '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + ((Y(10) + Y(null)) / 2) + '" y2="' + ((Y(10) + Y(null)) / 2) + '" class="cf-axis" stroke-dasharray="4 4"/>' +
+        '<text x="' + (pl - 12) + '" y="' + Y(null) + '" class="cf-ax" text-anchor="end" dominant-baseline="middle">вне</text>';
+    }
+    var cols = weeks.map(function (w, i) { return '<text x="' + X(i) + '" y="16" class="cf-tlegend" text-anchor="middle">' + esc(wlabel(w)) + '</text><line x1="' + X(i) + '" x2="' + X(i) + '" y1="' + (pt - 8) + '" y2="' + (H - pb + 6) + '" class="cf-grid"/>'; }).join('');
+    var ordered = list.slice().sort(function (a, b) { return (STATUS[a.status] === 'out') - (STATUS[b.status] === 'out'); });
+    var labelsUsed = [];
+    var lines = ordered.map(function (x) {
+      var cls = STATUS[x.status] || 'flat';
+      var pts = x.ranks.map(function (r, i) { return mode === 'revenue' ? (x.revenue[i] == null ? null : [X(i), Y(x.revenue[i])]) : [X(i), Y(r)]; });
+      var d = '', started = false;
+      pts.forEach(function (p) { if (!p) { started = false; return; } d += (started ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1) + ' '; started = true; });
+      var tip = x.brand + ' — ' + x.name + ' · места: ' + x.ranks.map(function (r) { return r || '—'; }).join(' → ') + ' · выручка: ' + x.revenue.map(function (v) { return v == null ? '—' : money(v); }).join(' → ') + ' · ' + x.status;
+      var dots = pts.map(function (p, i) { return p ? '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + (i === last ? 5 : 3.5) + '" class="mp-bd ' + cls + '"/>' : ''; }).join('');
+      var label = '';
+      var lp = pts[last];
+      if (lp && (mode === 'revenue' || x.ranks[last] != null)) {
+        var ly = lp[1];
+        while (labelsUsed.some(function (u) { return Math.abs(u - ly) < 15; })) ly += 15;
+        labelsUsed.push(ly);
+        label = '<text x="' + (lp[0] + 12) + '" y="' + ly + '" class="mp-bl ' + cls + '" dominant-baseline="middle">' + (x.ranks[last] ? x.ranks[last] + '. ' : '') + esc(short(x.brand, 16)) + ' · ' + esc(short(x.name, 30)) + '</text>';
+      }
+      return '<g class="mp-bump-line ' + cls + '" data-tip="' + esc(tip) + '"><path d="' + d + '" class="mp-bp ' + cls + '"/>' + dots + label + '</g>';
+    }).join('');
+    return '<svg class="mp-bump" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Топ-10 по неделям: ' + esc(G.label) + '">' + cols + ticks + lines + '</svg>';
+  }
+  function dynTable(G, weeks) {
+    var last = weeks.length - 1;
+    var rows = G.products.slice().sort(function (a, b) { return (a.ranks[last] || 99) - (b.ranks[last] || 99) || (b.revenue[last] || 0) - (a.revenue[last] || 0); });
+    return '<div class="table-wrap"><table class="table mp-table"><thead><tr><th scope="col">Место</th><th scope="col">Товар</th><th scope="col">Выручка по неделям</th><th scope="col">За неделю</th><th scope="col">Изм.</th><th scope="col">Статус</th></tr></thead><tbody>' +
+      rows.map(function (x) {
+        var r = x.ranks[last], p = x.ranks[last - 1], mv = r && p ? p - r : null;
+        var max = Math.max.apply(null, x.revenue.map(function (v) { return v || 0; }).concat([1]));
+        var spark = '<span class="mp-mini">' + x.revenue.map(function (v, i) { return '<i title="' + esc(wlabel(weeks[i]) + ': ' + (v == null ? 'нет в топ-100' : money(v))) + '" style="height:' + Math.max(2, (v || 0) / max * 100).toFixed(0) + '%"' + (v == null ? ' class="none"' : '') + '></i>'; }).join('') + '</span>';
+        return '<tr><td class="num"><b>' + (r || '—') + '</b>' + (mv ? ' <span class="mp-g ' + (mv > 0 ? 'up' : 'down') + '">' + (mv > 0 ? '↑' : '↓') + Math.abs(mv) + '</span>' : '') + '</td>' +
+          '<td class="mp-prodcell">' + link(x.url, short(x.name, 70)) + '<small>' + esc(x.brand) + (x.price ? ' · ' + n(x.price) + ' ₽' : '') + (x.rating ? ' · ★ ' + x.rating : '') + '</small></td>' +
+          '<td>' + spark + '</td><td class="num">' + money(x.revenue[last]) + '</td><td class="num">' + growth(x.changePct) + '</td>' +
+          '<td><span class="mp-status ' + (STATUS[x.status] || 'flat') + '">' + esc(x.status) + '</span></td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  function dynPanel(r, mp) {
+    var D = r.dynamics;
+    if (!D || !D.groups || !D.groups[mp]) return '<div class="card mp-dyn"><p class="muted">Динамика топ-10 появится в отчёте после следующего сбора данных.</p></div>';
+    var groups = D.groups[mp], keys = GROUP_ORDER.filter(function (k) { return groups[k]; });
+    var g = BM.ui.mpDynGroup && groups[BM.ui.mpDynGroup] ? BM.ui.mpDynGroup : keys[0];
+    var G = groups[g], weeks = (D.weeksByMp && D.weeksByMp[mp]) || D.weeks, mode = BM.ui.mpDynMode || 'rank';
+    var last = weeks.length - 1, cnt = function (st) { return G.products.filter(function (x) { return STATUS[x.status] === st; }).length; };
+    var stale = r.periods && r.periods.byMp && r.periods.byMp[mp] && r.periods.byMp[mp].stale;
+    return '<div class="card mp-dyn" id="mp-dyn"><div class="card-head"><h2>Динамика топ-10 · ' + esc(MP[mp]) + '</h2><button type="button" class="btn sm ghost" data-mp-dyn>' + icon('x', 'sm') + 'Закрыть</button></div>' +
+      '<div class="mp-dyn-bar"><div class="chips" role="group" aria-label="Группа товаров">' + keys.map(function (k) { return '<button type="button" class="chip" data-mp-dyngroup="' + k + '" aria-pressed="' + (k === g) + '">' + esc(groups[k].label) + '</button>'; }).join('') + '</div>' +
+      '<div class="sys-seg" role="group" aria-label="Что показывать"><button type="button" data-mp-dynmode="rank" aria-pressed="' + (mode === 'rank') + '">Место в топе</button><button type="button" data-mp-dynmode="revenue" aria-pressed="' + (mode === 'revenue') + '">Выручка</button></div></div>' +
+      '<p class="small muted" style="margin:4px 0 10px">Четыре недели подряд: ' + esc(wlabel(weeks[0])) + ' — ' + esc(wlabel(weeks[last])) + '.' + (stale ? ' Данные ' + esc(MP[mp]) + ' в MPStats обрываются ' + esc(r.periods.byMp[mp].lastData) + ', поэтому недели сдвинуты к последним доступным.' : '') +
+      ' За неделю: растут ' + cnt('up') + ', падают ' + cnt('down') + ', новых в топ-10 ' + cnt('new') + ', выбыли ' + cnt('out') + '.</p>' +
+      '<div class="mp-legend"><span class="up">растёт</span><span class="down">падает</span><span class="new">новый в топ-10</span><span class="out">выбыл</span><span class="flat">стабильно</span></div>' +
+      '<div class="mp-bump-wrap">' + bump(G, weeks, mode) + '</div>' + dynTable(G, weeks) + '</div>';
+  }
+
   // ---------- view ----------
   BM.mpstatsView = function () {
     var ui = BM.ui;
@@ -163,11 +243,13 @@
       (weeks.length ? weeks.map(function (w) { return '<option value="' + esc(w.id) + '"' + (w.id === wid ? ' selected' : '') + '>' + esc(w.label || w.id) + '</option>'; }).join('') : '<option>Пока нет отчётов</option>') + '</select></div>' +
       '<div class="sys-seg" role="group" aria-label="Площадка">' + ['wb', 'ozon'].map(function (k) { return '<button type="button" data-mp-market="' + k + '" aria-pressed="' + (mp === k) + '">' + MP[k] + '</button>'; }).join('') + '</div>' +
       '<div class="sys-seg" role="group" aria-label="Категория">' + ['face', 'hair'].map(function (k) { return '<button type="button" data-mp-cat="' + k + '" aria-pressed="' + (cat === k) + '">' + CAT[k] + '</button>'; }).join('') + '</div>' +
+      '<button type="button" class="btn' + (ui.mpDyn ? ' primary' : '') + '" data-mp-dyn aria-expanded="' + !!ui.mpDyn + '">' + icon('chart', 'sm') + 'Динамика топ-10</button>' +
       '<span class="small muted">' + (loading ? 'Загружаю…' : lastError ? 'Ошибка: ' + esc(lastError) : '') + '</span></div>';
     if (!r) return bar + '<div class="empty"><div class="e-icon">' + icon('chart') + '</div><h3>' + (weeks.length ? 'Загружаю отчёт…' : 'Первый отчёт MPStats ещё готовится') + '</h3><p>Отчёт собирается еженедельно по понедельникам задачей «Аналитика MPStats» и хранится в вашем приватном репозитории данных. Excel-копии — в папке «аналитика MPStats» на компьютере.</p></div>';
     var m = r.markets[mp] || {}, c = m.categories && m.categories[cat];
-    var P = r.periods;
+    var P = (r.periods.byMp && r.periods.byMp[mp]) || r.periods;
     var html = bar +
+      (ui.mpDyn ? dynPanel(r, mp) : '') +
       '<div class="card"><div class="card-head"><h2>Главное за неделю</h2><span class="small muted">' + esc(P.p30[0]) + ' — ' + esc(P.p30[1]) + ', сравнение с ' + esc(P.p30prev[0]) + ' — ' + esc(P.p30prev[1]) + '</span></div>' +
       (r.summary ? '<p class="in-summary">' + esc(r.summary) + '</p>' : '') +
       ((r.highlights || []).length ? '<ul class="mp-highlights">' + r.highlights.map(function (h) { return '<li>' + esc(h) + '</li>'; }).join('') + '</ul>' : '') +
@@ -203,6 +285,9 @@
     var t;
     if ((t = e.target.closest('[data-mp-market]'))) { BM.ui.mpMarket = t.dataset.mpMarket; BM.render(); }
     else if ((t = e.target.closest('[data-mp-cat]'))) { BM.ui.mpCat = t.dataset.mpCat; BM.render(); }
+    else if ((t = e.target.closest('[data-mp-dyn]'))) { BM.ui.mpDyn = !BM.ui.mpDyn; BM.render(); if (BM.ui.mpDyn) { var el = document.getElementById('mp-dyn'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
+    else if ((t = e.target.closest('[data-mp-dyngroup]'))) { BM.ui.mpDynGroup = t.dataset.mpDyngroup; BM.render(); }
+    else if ((t = e.target.closest('[data-mp-dynmode]'))) { BM.ui.mpDynMode = t.dataset.mpDynmode; BM.render(); }
   });
   document.addEventListener('change', function (e) { if (e.target.id === 'mp-week') { BM.ui.mpWeek = e.target.value; BM.render(); } });
   BM.mpstatsRefresh = function () { loadIndex(true); var id = BM.ui.mpWeek; if (id) loadWeek(id).then(rerender); };
