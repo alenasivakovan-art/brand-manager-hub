@@ -11,6 +11,7 @@
     { id: 'world', label: 'Мировые рынки', icon: 'map' },
     { id: 'trends', label: 'Тренды России', icon: 'chart' },
     { id: 'pains', label: 'Боли и потребности', icon: 'users' },
+    { id: 'mpstats', label: 'Аналитика MPStats', icon: 'chart' },
     { id: 'market', label: 'Рынок и конкуренты', icon: 'target' },
     { id: 'ideas', label: 'Идеи брендов', icon: 'bulb' },
     { id: 'stars', label: 'Избранное', icon: 'star' }
@@ -170,6 +171,7 @@
 
     var body;
     if (tab === 'stars') body = starsView();
+    else if (tab === 'mpstats') body = '<div class="mp-root">' + (BM.mpstatsView ? BM.mpstatsView() : '') + '</div>';
     else if (!w) body = weeks.length ? '<div class="empty"><div class="e-icon">' + icon('refresh') + '</div><h3>Загружаю дайджест…</h3><p>Если интернета нет — откроется последняя сохранённая версия.</p></div>' :
       '<div class="empty"><div class="e-icon">' + icon('radar') + '</div><h3>Первый дайджест ещё готовится</h3><p>Задача «Рыночный радар» запускается по понедельникам в 08:00. Её можно запустить вручную в Claude: раздел Scheduled → «Рыночный радар: уход за собой» → Run now.</p></div>' + howItWorks();
     else body = weekView(w, tab);
@@ -286,6 +288,7 @@
     });
     page.addEventListener('click', function (e) {
       var t;
+      if (e.target.closest('[data-in-refresh]') && BM.mpstatsRefresh) BM.mpstatsRefresh();
       if (e.target.closest('[data-in-refresh]')) { loadIndex(true).then(function () { var id = BM.ui.inWeek; if (id) return loadWeek(id).then(rerender); }); BM.render(); return; }
       if ((t = e.target.closest('[data-in-region]'))) { BM.ui.inRegion = t.dataset.inRegion; BM.ui.inTag = ''; BM.render(); return; }
       if ((t = e.target.closest('[data-in-region-go]'))) { BM.ui.inRegion = t.dataset.inRegionGo; BM.ui.inTag = ''; return; }
