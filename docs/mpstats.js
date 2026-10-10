@@ -137,12 +137,12 @@
       r.niches.slice().sort(function (a, b) { return (b.score || 0) - (a.score || 0); }).map(function (x) {
         return '<tr><td><b>' + esc(x.name) + '</b><small class="muted" style="display:block">' + esc(x.category || '') + '</small></td><td>' + esc(MP[x.mp] || x.mp || '') + '</td><td class="num"><span class="mp-score"><i style="width:' + (x.score || 0) + '%"></i></span>' + esc(x.score) + '</td><td><span class="mp-verdict ' + (VERDICT[x.verdict] || '') + '">' + esc(x.verdict) + '</span></td><td class="mp-reason">' + esc(x.reason) + '</td></tr>';
       }).join('') + '</tbody></table></div></div>';
-    if (r.decisions && r.decisions.length) out += '<div class="card"><h3>Решения недели</h3><ol class="mp-decisions">' + r.decisions.map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('') + '</ol></div>';
+    if (r.decisions && r.decisions.length) out += '<div class="card"><h3>Решения до следующего отчёта</h3><ol class="mp-decisions">' + r.decisions.map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('') + '</ol></div>';
     return out;
   }
   function history(mp, cat) {
     var ws = ((C.index && C.index.weeks) || []).slice().reverse().filter(function (w) { return w.kpi && w.kpi[mp] && w.kpi[mp][cat]; });
-    if (ws.length < 2) return '<p class="small muted">История появится со второй недели: здесь будет видно, растёт ли доля категории.</p>';
+    if (ws.length < 2) return '<p class="small muted">История появится со второго отчёта: здесь будет видно, растёт ли доля категории.</p>';
     var vals = ws.map(function (w) { return w.kpi[mp][cat].beautyShare || 0; }), max = Math.max.apply(null, vals), min = Math.min.apply(null, vals);
     var W = 300, H = 60, X = function (i) { return 4 + i / (ws.length - 1) * (W - 8); }, Y = function (v) { return 6 + (1 - (v - min) / ((max - min) || 1)) * (H - 12); };
     return '<svg class="mp-spark" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Доля в «Красоте» по неделям"><path d="' + vals.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ') + '" class="cf-line"/>' +
@@ -239,18 +239,18 @@
     if (wid && !C.weeks[wid] && canRead() && navigator.onLine) loadWeek(wid).then(rerender);
     var r = wid ? C.weeks[wid] : null;
     var mp = ui.mpMarket || 'wb', cat = ui.mpCat || 'face';
-    var bar = '<div class="card in-head-card"><div class="field" style="flex:1 1 200px"><label for="mp-week">Неделя</label><select class="select" id="mp-week">' +
+    var bar = '<div class="card in-head-card"><div class="field" style="flex:1 1 200px"><label for="mp-week">Отчёт</label><select class="select" id="mp-week">' +
       (weeks.length ? weeks.map(function (w) { return '<option value="' + esc(w.id) + '"' + (w.id === wid ? ' selected' : '') + '>' + esc(w.label || w.id) + '</option>'; }).join('') : '<option>Пока нет отчётов</option>') + '</select></div>' +
       '<div class="sys-seg" role="group" aria-label="Площадка">' + ['wb', 'ozon'].map(function (k) { return '<button type="button" data-mp-market="' + k + '" aria-pressed="' + (mp === k) + '">' + MP[k] + '</button>'; }).join('') + '</div>' +
       '<div class="sys-seg" role="group" aria-label="Категория">' + ['face', 'hair'].map(function (k) { return '<button type="button" data-mp-cat="' + k + '" aria-pressed="' + (cat === k) + '">' + CAT[k] + '</button>'; }).join('') + '</div>' +
       '<button type="button" class="btn' + (ui.mpDyn ? ' primary' : '') + '" data-mp-dyn aria-expanded="' + !!ui.mpDyn + '">' + icon('chart', 'sm') + 'Динамика топ-10</button>' +
       '<span class="small muted">' + (loading ? 'Загружаю…' : lastError ? 'Ошибка: ' + esc(lastError) : '') + '</span></div>';
-    if (!r) return bar + '<div class="empty"><div class="e-icon">' + icon('chart') + '</div><h3>' + (weeks.length ? 'Загружаю отчёт…' : 'Первый отчёт MPStats ещё готовится') + '</h3><p>Отчёт собирается еженедельно по понедельникам задачей «Аналитика MPStats» и хранится в вашем приватном репозитории данных. Excel-копии — в папке «аналитика MPStats» на компьютере.</p></div>';
+    if (!r) return bar + '<div class="empty"><div class="e-icon">' + icon('chart') + '</div><h3>' + (weeks.length ? 'Загружаю отчёт…' : 'Первый отчёт MPStats ещё готовится') + '</h3><p>Отчёт собирается дважды в месяц, 1-го и 15-го числа, задачей «Аналитика MPStats» и хранится в вашем приватном репозитории данных. Excel-копии — в папке «аналитика MPStats» на компьютере.</p></div>';
     var m = r.markets[mp] || {}, c = m.categories && m.categories[cat];
     var P = (r.periods.byMp && r.periods.byMp[mp]) || r.periods;
     var html = bar +
       (ui.mpDyn ? dynPanel(r, mp) : '') +
-      '<div class="card"><div class="card-head"><h2>Главное за неделю</h2><span class="small muted">' + esc(P.p30[0]) + ' — ' + esc(P.p30[1]) + ', сравнение с ' + esc(P.p30prev[0]) + ' — ' + esc(P.p30prev[1]) + '</span></div>' +
+      '<div class="card"><div class="card-head"><h2>Главное за период</h2><span class="small muted">' + esc(P.p30[0]) + ' — ' + esc(P.p30[1]) + ', сравнение с ' + esc(P.p30prev[0]) + ' — ' + esc(P.p30prev[1]) + '</span></div>' +
       (r.summary ? '<p class="in-summary">' + esc(r.summary) + '</p>' : '') +
       ((r.highlights || []).length ? '<ul class="mp-highlights">' + r.highlights.map(function (h) { return '<li>' + esc(h) + '</li>'; }).join('') + '</ul>' : '') +
       ((r.notes || []).length ? '<details class="small" style="margin-top:10px"><summary style="cursor:pointer;font-weight:600">Как читать данные</summary><ul class="muted" style="padding-left:18px;margin-top:6px">' + r.notes.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></details>' : '') + '</div>' +
