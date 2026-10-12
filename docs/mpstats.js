@@ -52,16 +52,76 @@
   function link(url, text) { return url ? '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(text) + '</a>' : esc(text); }
 
   // ---------- blocks ----------
-  function kpiCards(r, mp) {
-    var m = r.markets[mp]; if (!m) return '';
-    return '<div class="mp-kpis">' + Object.keys(m.categories).map(function (k) {
-      var c = m.categories[k], q = c.kpi;
-      return '<div class="card mp-kpi"><small>' + esc(c.label) + (m.periods && m.periods.stale ? ' · данные по ' + esc(m.periods.lastData) : '') + '</small><b class="num">' + money(q.revenue) + '</b>' +
-        '<div class="mp-kpi-row"><span>к прошлым ' + ((m.periods && m.periods.len) || 30) + ' дням ' + growth(q.growthPct) + '</span><span>неделя ' + growth(q.weekGrowthPct) + '</span></div>' +
-        '<div class="mp-kpi-row"><span>доля в «Красоте» <b class="num">' + pctv(q.beautyShare) + '</b> ' + growth(q.beautyShareDeltaPp, true) + '</span></div>' +
-        '<div class="mp-kpi-row muted"><span>товаров с продажами ' + pctv(q.itemsWithSellsPct) + '</span><span>брендов ' + n(q.brandsWithSells) + '</span></div></div>';
-    }).join('') + '</div>';
+  function dm(d) { var p = String(d || '').split('-'); return p.length === 3 ? p[2] + '.' + p[1] : String(d || ''); }
+  function byScore(a, b) { return (b.score || 0) - (a.score || 0); }
+  function ring(score, cls) {
+    var rad = 20, len = 2 * Math.PI * rad, v = Math.max(0, Math.min(100, Math.round(score || 0)));
+    return '<svg class="mp-ring ' + (cls || '') + '" viewBox="0 0 52 52" role="img" aria-label="Оценка ' + v + ' из 100"><circle cx="26" cy="26" r="' + rad + '" class="mp-ring-bg"/><circle cx="26" cy="26" r="' + rad + '" class="mp-ring-fg" stroke-dasharray="' + (len * v / 100).toFixed(1) + ' ' + len.toFixed(1) + '" transform="rotate(-90 26 26)"/><text x="26" y="27" text-anchor="middle" dominant-baseline="middle">' + v + '</text></svg>';
   }
+  function more(label, body) { return '<details class="mp-more"><summary>' + esc(label) + '</summary>' + body + '</details>'; }
+  function jump(id, label) { return '<button type="button" class="mp-jump" data-mp-jump="mp-s-' + id + '">' + esc(label) + icon('chevR', 'sm') + '</button>'; }
+
+  // four tiles: marketplace × category; a click switches the detailed sections below
+  function kpiCards(r, mp, cat) {
+    var out = '';
+    ['wb', 'ozon'].forEach(function (k) {
+      var m = r.markets[k]; if (!m) return;
+      Object.keys(m.categories).forEach(function (ck) {
+        var c = m.categories[ck], q = c.kpi, on = k === mp && ck === cat, P = m.periods || {};
+        out += '<button type="button" class="card mp-pulse' + (on ? ' on' : '') + '" data-mp-pick="' + k + ':' + ck + '" aria-pressed="' + on + '">' +
+          '<small>' + esc(MP[k]) + ' · ' + esc(c.label) + '</small><b class="num">' + money(q.revenue) + '</b>' +
+          '<span class="mp-pulse-g">' + growth(q.growthPct) + '<i>к прошлым ' + (P.len || 30) + ' дням</i></span>' +
+          '<span class="mp-pulse-row"><span>неделя ' + growth(q.weekGrowthPct) + '</span><span>доля в «Красоте» ' + pctv(q.beautyShare) + ' ' + growth(q.beautyShareDeltaPp, true) + '</span></span>' +
+          (P.stale ? '<span class="mp-stale">данные по ' + esc(dm(P.lastData)) + '</span>' : '') + '</button>';
+      });
+    });
+    return '<div class="mp-kpis">' + out + '</div>';
+  }
+
+  // a highlight sentence → tile: marketplace tag, the first figure in large type, a short headline; the full text opens on click
+  function fact(h) {
+    var t = String(h), tag = '', m = t.match(/^(WB|Wildberries|Ozon)\b[^:]{0,24}:\s*/i);
+    if (m) { tag = /^o/i.test(m[1]) ? 'Ozon' : 'WB'; t = t.slice(m[0].length); }
+    var fig = t.match(/[+−]?\d+(?:[.,]\d+)?\s?%/) || t.match(/\d+(?:[.,]\d+)?\s?(?:млрд|млн|тыс\.)\s?₽/);
+    var cut = t.search(/;| — |\.\s(?=[А-ЯЁA-Z])/), head = cut > 24 ? t.slice(0, cut) : t;
+    if (head.length > 92) head = head.slice(0, 92).replace(/[\s,;:(]+\S*$/, '') + '…';
+    var ft = fig ? fig[0].replace(/\s(?=%)/, '') : '';
+    if (/^\d.*%$/.test(ft)) {
+      var pre = t.slice(Math.max(0, fig.index - 16), fig.index);
+      if (/(вырос|рост|прибав)\S*\s+(на\s+)?$/i.test(pre)) ft = '+' + ft; else if (/(упал|сниз|потер|просел)\S*\s+(на\s+)?$/i.test(pre)) ft = '−' + ft;
+    }
+    var cls = ft.charAt(0) === '+' ? 'up' : ft.charAt(0) === '−' ? 'down' : '';
+    return '<details class="mp-fact"><summary>' + (tag ? '<span class="mp-fact-tag">' + tag + '</span>' : '') + (ft ? '<b class="num ' + cls + '">' + esc(ft) + '</b>' : '') + '<span>' + esc(head.charAt(0).toUpperCase() + head.slice(1)) + '</span></summary><p>' + esc(t) + '</p></details>';
+  }
+
+  function widgets(r, c, mp) {
+    var out = '', N = (r.niches || []).slice().sort(byScore), W = (r.windows || []).slice().sort(byScore);
+    if (N.length) {
+      var cnt = { go: 0, watch: 0, stop: 0 }, names = { go: 'заходить', watch: 'наблюдать', stop: 'не заходить' };
+      N.forEach(function (x) { var v = VERDICT[x.verdict]; if (v) cnt[v]++; });
+      out += '<section class="mp-w"><h3>Ниши: решения</h3><div class="mp-stack" aria-hidden="true">' + ['go', 'watch', 'stop'].map(function (k) { return cnt[k] ? '<i class="' + k + '" style="flex:' + cnt[k] + '"></i>' : ''; }).join('') + '</div>' +
+        '<div class="mp-stack-l">' + ['go', 'watch', 'stop'].map(function (k) { return '<span class="' + k + '"><b class="num">' + cnt[k] + '</b> ' + names[k] + '</span>'; }).join('') + '</div>' +
+        '<ol class="mp-w-list">' + N.slice(0, 3).map(function (x) { return '<li><span>' + esc(x.name) + '<small>' + esc(MP[x.mp] || x.mp || '') + '</small></span><b class="num">' + esc(x.score) + '</b></li>'; }).join('') + '</ol>' + jump('niches', 'Все ниши: ' + N.length) + '</section>';
+    }
+    if (W.length) {
+      out += '<section class="mp-w"><h3>Лучшее окно возможностей</h3><div class="mp-w-win">' + ring(W[0].score) + '<p>' + esc(W[0].title) + '</p></div>' +
+        '<div class="in-meta">' + (W[0].mp ? '<span class="badge">' + esc(MP[W[0].mp] || W[0].mp) + '</span>' : '') + (W[0].category ? '<span class="badge">' + esc(W[0].category) + '</span>' : '') + '</div>' +
+        (W.length > 1 ? '<ol class="mp-w-list" start="2">' + W.slice(1, 3).map(function (x) { return '<li><span>' + esc(x.title) + '</span><b class="num">' + esc(x.score) + '</b></li>'; }).join('') + '</ol>' : '') + jump('windows', 'Все окна: ' + W.length) + '</section>';
+    }
+    if (c && c.subcats) {
+      var subs = c.subcats.filter(function (x) { return x.growthPct != null && (x.share || 0) >= 1; });
+      var up = subs.filter(function (x) { return x.growthPct > 0; }).sort(function (a, b) { return b.growthPct - a.growthPct; }).slice(0, 3);
+      var down = subs.filter(function (x) { return x.growthPct < 0; }).sort(function (a, b) { return a.growthPct - b.growthPct; }).slice(0, 3);
+      var max = Math.max.apply(null, up.concat(down).map(function (x) { return Math.abs(x.growthPct); }).concat([1]));
+      var row = function (x) { return '<li><span class="mp-mv-n">' + esc(x.name) + '</span><span class="mp-mv-t"><i class="' + (x.growthPct > 0 ? 'up' : 'down') + '" style="width:' + Math.max(4, Math.abs(x.growthPct) / max * 100).toFixed(0) + '%"></i></span>' + growth(x.growthPct) + '</li>'; };
+      if (up.length || down.length) out += '<section class="mp-w"><h3>Растёт и падает</h3><small class="mp-w-sub">' + esc(c.label) + ' · ' + esc(MP[mp]) + ', подкатегории с долей от 1%</small><ul class="mp-movers">' + up.map(row).join('') + (up.length && down.length ? '<li class="mp-mv-sep" aria-hidden="true"></li>' : '') + down.map(row).join('') + '</ul>' + jump('sub', 'Все подкатегории') + '</section>';
+    }
+    if ((r.pains || []).length) out += '<section class="mp-w"><h3>На что жалуются покупатели</h3><ol class="mp-w-pains">' + r.pains.slice(0, 4).map(function (p) { return '<li>' + esc(p.pain) + '</li>'; }).join('') + '</ol>' + jump('pains', 'Цитаты и инсайты: ' + r.pains.length) + '</section>';
+    if ((r.trends || []).length) out += '<section class="mp-w"><h3>Что двигает продажи</h3><div class="mp-w-chips">' + r.trends.map(function (t) { return '<span class="in-pchip">' + esc(t.title) + '</span>'; }).join('') + '</div>' + jump('trends', 'Подробнее о трендах') + '</section>';
+    return out ? '<div class="mp-widgets">' + out + '</div>' : '';
+  }
+  function doneMap(id) { var all = BM.state.mpDone = BM.state.mpDone || {}; return all[id] = all[id] || {}; }
+
   function matrix(c) {
     var s = c.subcats.filter(function (x) { return x.growthPct != null; }).slice(0, 16);
     if (!s.length) return '';
@@ -121,25 +181,33 @@
   }
   function insightCards(r) {
     var out = '';
-    if (r.windows && r.windows.length) out += '<h3 class="mp-h">Окна возможностей</h3><div class="in-grid">' + r.windows.slice().sort(function (a, b) { return (b.score || 0) - (a.score || 0); }).map(function (w) {
-      return '<article class="card in-card"><div class="row" style="justify-content:space-between;flex-wrap:nowrap;align-items:flex-start"><h3>' + esc(w.title) + '</h3><span class="in-total">' + esc(w.score) + '/100</span></div>' +
+    if (r.windows && r.windows.length) out += '<h3 class="mp-h" id="mp-s-windows">Окна возможностей</h3><div class="in-grid">' + r.windows.slice().sort(byScore).map(function (w) {
+      return '<article class="card in-card"><div class="mp-win-head">' + ring(w.score) + '<h3>' + esc(w.title) + '</h3></div>' +
         '<div class="in-meta">' + (w.mp ? '<span class="badge">' + esc(MP[w.mp] || w.mp) + '</span>' : '') + (w.category ? '<span class="badge">' + esc(w.category) + '</span>' : '') + '</div>' +
-        '<div class="in-evidence">' + esc(w.evidence) + '</div>' + (w.action ? '<div class="in-opp"><b>Что сделать</b>' + esc(w.action) + '</div>' : '') + '</article>';
+        (w.action ? '<div class="in-opp"><b>Что сделать</b>' + esc(w.action) + '</div>' : '') + (w.evidence ? more('Цифры и обоснование', '<div class="in-evidence">' + esc(w.evidence) + '</div>') : '') + '</article>';
     }).join('') + '</div>';
-    if (r.pains && r.pains.length) out += '<h3 class="mp-h">Боли покупателей из отзывов</h3><div class="in-grid">' + r.pains.map(function (p) {
-      return '<article class="card in-card"><h3>' + esc(p.pain) + '</h3><div class="in-meta">' + (p.category ? '<span class="badge">' + esc(p.category) + '</span>' : '') + (p.products || []).slice(0, 3).map(function (x) { return '<span class="in-pchip">' + esc(x) + '</span>'; }).join('') + '</div>' +
-        (p.quotes || []).slice(0, 3).map(function (q) { return '<p class="in-quote">«' + esc(q) + '»</p>'; }).join('') + (p.insight ? '<div class="in-opp"><b>Инсайт для продукта</b>' + esc(p.insight) + '</div>' : '') + '</article>';
+    if (r.pains && r.pains.length) out += '<h3 class="mp-h" id="mp-s-pains">Боли покупателей из отзывов</h3><div class="in-grid">' + r.pains.map(function (p) {
+      var q = p.quotes || [];
+      return '<article class="card in-card"><h3>' + esc(p.pain) + '</h3><div class="in-meta">' + (p.category ? '<span class="badge">' + esc(p.category) + '</span>' : '') + '</div>' +
+        (q[0] ? '<p class="in-quote">«' + esc(q[0]) + '»</p>' : '') + (p.insight ? '<div class="in-opp"><b>Инсайт для продукта</b>' + esc(p.insight) + '</div>' : '') +
+        (q.length > 1 || (p.products || []).length ? more('Ещё цитаты и товары', q.slice(1, 3).map(function (x) { return '<p class="in-quote">«' + esc(x) + '»</p>'; }).join('') + ((p.products || []).length ? '<div class="in-pchips">' + p.products.slice(0, 4).map(function (x) { return '<span class="in-pchip">' + esc(x) + '</span>'; }).join('') + '</div>' : '')) : '') + '</article>';
     }).join('') + '</div>';
-    if (r.trends && r.trends.length) out += '<h3 class="mp-h">Что двигает продажи: компоненты и форматы</h3><div class="in-grid">' + r.trends.map(function (t) {
-      return '<article class="card in-card"><h3>' + esc(t.title) + '</h3><p>' + esc(t.evidence) + '</p>' + ((t.products || []).length ? '<div class="in-pchips">' + t.products.slice(0, 5).map(function (x) { return '<span class="in-pchip">' + esc(x) + '</span>'; }).join('') + '</div>' : '') + '</article>';
+    if (r.trends && r.trends.length) out += '<h3 class="mp-h" id="mp-s-trends">Что двигает продажи: компоненты и форматы</h3><div class="in-grid">' + r.trends.map(function (t) {
+      return '<article class="card in-card"><h3>' + esc(t.title) + '</h3>' + ((t.products || []).length ? '<div class="in-pchips">' + t.products.slice(0, 5).map(function (x) { return '<span class="in-pchip">' + esc(x) + '</span>'; }).join('') + '</div>' : '') + (t.evidence ? more('На чём основано', '<p class="mp-more-p">' + esc(t.evidence) + '</p>') : '') + '</article>';
     }).join('') + '</div>';
-    if (r.niches && r.niches.length) out += '<h3 class="mp-h">Ниши: скоринг</h3><div class="card"><div class="table-wrap"><table class="table mp-table"><thead><tr><th scope="col">Ниша</th><th scope="col">Площадка</th><th scope="col">Оценка</th><th scope="col">Решение</th><th scope="col">Почему</th></tr></thead><tbody>' +
-      r.niches.slice().sort(function (a, b) { return (b.score || 0) - (a.score || 0); }).map(function (x) {
-        return '<tr><td><b>' + esc(x.name) + '</b><small class="muted" style="display:block">' + esc(x.category || '') + '</small></td><td>' + esc(MP[x.mp] || x.mp || '') + '</td><td class="num"><span class="mp-score"><i style="width:' + (x.score || 0) + '%"></i></span>' + esc(x.score) + '</td><td><span class="mp-verdict ' + (VERDICT[x.verdict] || '') + '">' + esc(x.verdict) + '</span></td><td class="mp-reason">' + esc(x.reason) + '</td></tr>';
-      }).join('') + '</tbody></table></div></div>';
-    if (r.decisions && r.decisions.length) out += '<div class="card"><h3>Решения до следующего отчёта</h3><ol class="mp-decisions">' + r.decisions.map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('') + '</ol></div>';
+    if (r.niches && r.niches.length) out += '<h3 class="mp-h" id="mp-s-niches">Ниши: скоринг</h3><div class="card"><p class="small muted" style="margin-bottom:8px">Нажмите на нишу, чтобы увидеть обоснование.</p><div class="mp-niches">' +
+      r.niches.slice().sort(byScore).map(function (x) {
+        var v = VERDICT[x.verdict] || '';
+        return '<details class="mp-niche"><summary><span class="mp-niche-n"><b>' + esc(x.name) + '</b><small>' + esc(MP[x.mp] || x.mp || '') + (x.category ? ' · ' + esc(x.category) : '') + '</small></span><span class="mp-niche-bar"><i class="' + v + '" style="width:' + (x.score || 0) + '%"></i></span><b class="num mp-niche-s">' + esc(x.score) + '</b><span class="mp-verdict ' + v + '">' + esc(x.verdict) + '</span></summary><p>' + esc(x.reason) + '</p></details>';
+      }).join('') + '</div></div>';
+    if (r.decisions && r.decisions.length) {
+      var done = doneMap(r.id), k = r.decisions.filter(function (d, i) { return done[i]; }).length;
+      out += '<div class="card" id="mp-s-decisions"><div class="card-head"><h3>Решения до следующего отчёта</h3><span class="small muted" id="mp-done-n">' + k + ' из ' + r.decisions.length + '</span></div><div class="mp-progress"><i id="mp-done-bar" style="width:' + (k / r.decisions.length * 100).toFixed(0) + '%"></i></div>' +
+        '<ul class="mp-todo">' + r.decisions.map(function (d, i) { return '<li' + (done[i] ? ' class="done"' : '') + '><label><input type="checkbox" data-mp-done="' + i + '" data-mp-week="' + esc(r.id) + '"' + (done[i] ? ' checked' : '') + '><span>' + esc(d) + '</span></label></li>'; }).join('') + '</ul></div>';
+    }
     return out;
   }
+
   function history(mp, cat) {
     var ws = ((C.index && C.index.weeks) || []).slice().reverse().filter(function (w) { return w.kpi && w.kpi[mp] && w.kpi[mp][cat]; });
     if (ws.length < 2) return '<p class="small muted">История появится со второго отчёта: здесь будет видно, растёт ли доля категории.</p>';
@@ -248,19 +316,22 @@
     if (!r) return bar + '<div class="empty"><div class="e-icon">' + icon('chart') + '</div><h3>' + (weeks.length ? 'Загружаю отчёт…' : 'Первый отчёт MPStats ещё готовится') + '</h3><p>Отчёт собирается дважды в месяц, 1-го и 15-го числа, задачей «Аналитика MPStats» и хранится в вашем приватном репозитории данных. Excel-копии — в папке «аналитика MPStats» на компьютере.</p></div>';
     var m = r.markets[mp] || {}, c = m.categories && m.categories[cat];
     var P = (r.periods.byMp && r.periods.byMp[mp]) || r.periods;
+    var NAV = [['main', 'Главное'], ['sub', 'Подкатегории'], ['top', 'Топ товаров'], ['rising', 'Растущие'], ['brands', 'Бренды'], ['windows', 'Окна'], ['pains', 'Боли'], ['trends', 'Тренды'], ['niches', 'Ниши'], ['decisions', 'Решения']];
     var html = bar +
+      '<nav class="mp-nav" aria-label="Разделы отчёта">' + NAV.map(function (x) { return '<button type="button" class="chip" data-mp-jump="mp-s-' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</nav>' +
       (ui.mpDyn ? dynPanel(r, mp) : '') +
-      '<div class="card"><div class="card-head"><h2>Главное за период</h2><span class="small muted">' + esc(P.p30[0]) + ' — ' + esc(P.p30[1]) + ', сравнение с ' + esc(P.p30prev[0]) + ' — ' + esc(P.p30prev[1]) + '</span></div>' +
-      (r.summary ? '<p class="in-summary">' + esc(r.summary) + '</p>' : '') +
-      ((r.highlights || []).length ? '<ul class="mp-highlights">' + r.highlights.map(function (h) { return '<li>' + esc(h) + '</li>'; }).join('') + '</ul>' : '') +
-      ((r.notes || []).length ? '<details class="small" style="margin-top:10px"><summary style="cursor:pointer;font-weight:600">Как читать данные</summary><ul class="muted" style="padding-left:18px;margin-top:6px">' + r.notes.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></details>' : '') + '</div>' +
-      kpiCards(r, mp);
+      kpiCards(r, mp, cat) +
+      '<div class="card" id="mp-s-main"><div class="card-head"><h2>Главное за период</h2><span class="small muted">' + esc(MP[mp]) + ': ' + esc(dm(P.p30[0])) + ' — ' + esc(dm(P.p30[1])) + ' к ' + esc(dm(P.p30prev[0])) + ' — ' + esc(dm(P.p30prev[1])) + '</span></div>' +
+      widgets(r, c, mp) +
+      ((r.highlights || []).length ? '<h3 class="mp-sub">Ключевые факты <small>нажмите на карточку, чтобы раскрыть</small></h3><div class="mp-facts">' + r.highlights.map(fact).join('') + '</div>' : '') +
+      '<div class="mp-fold">' + (r.summary ? more('Развёрнутый вывод', '<p class="in-summary">' + esc(r.summary) + '</p>') : '') +
+      ((r.notes || []).length ? more('Как читать данные', '<ul class="muted small" style="padding-left:18px;margin-top:6px">' + r.notes.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>') : '') + '</div></div>';
     if (c) {
-      html += '<div class="card"><div class="card-head"><h2>' + esc(c.label) + ' · ' + esc(MP[mp]) + ': подкатегории</h2></div><div class="mp-two"><div>' + matrix(c) + '</div><div><h4>Доля в «Красоте» по неделям</h4>' + history(mp, cat) +
-        '<h4 style="margin-top:12px">Цены: где спрос выше предложения</h4>' + priceBars(c) + '</div></div>' + subTable(c) + '</div>' +
-        '<div class="card"><h2>Топ товаров и почему они в топе</h2>' + productCards(c.topProducts, mp, 'top') + '</div>' +
-        '<div class="card"><h2>Быстро растущие товары</h2>' + productCards(c.risingProducts, mp, 'rising') + '</div>' +
-        '<div class="card"><h2>Бренды</h2>' + brandBlock(c) + '</div>' +
+      html += '<div class="card" id="mp-s-sub"><div class="card-head"><h2>' + esc(c.label) + ' · ' + esc(MP[mp]) + ': подкатегории</h2></div><div class="mp-two"><div>' + matrix(c) + '</div><div><h4>Доля в «Красоте» по неделям</h4>' + history(mp, cat) +
+        '<h4 style="margin-top:12px">Цены: где спрос выше предложения</h4>' + priceBars(c) + '</div></div>' + more('Таблица по всем подкатегориям', subTable(c)) + '</div>' +
+        '<div class="card" id="mp-s-top"><h2>Топ товаров и почему они в топе</h2>' + productCards(c.topProducts, mp, 'top') + '</div>' +
+        '<div class="card" id="mp-s-rising"><h2>Быстро растущие товары</h2>' + productCards(c.risingProducts, mp, 'rising') + '</div>' +
+        '<div class="card" id="mp-s-brands"><h2>Бренды</h2>' + brandBlock(c) + '</div>' +
         '<div class="card"><h2>Сезонность</h2>' + season(c) + '</div>';
     }
     html += insightCards(r);
@@ -284,11 +355,26 @@
   document.addEventListener('click', function (e) {
     var t;
     if ((t = e.target.closest('[data-mp-market]'))) { BM.ui.mpMarket = t.dataset.mpMarket; BM.render(); }
+    else if ((t = e.target.closest('[data-mp-pick]'))) { var pk = t.dataset.mpPick.split(':'); BM.ui.mpMarket = pk[0]; BM.ui.mpCat = pk[1]; BM.render(); }
+    else if ((t = e.target.closest('[data-mp-jump]'))) { var sec = document.getElementById(t.dataset.mpJump); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     else if ((t = e.target.closest('[data-mp-cat]'))) { BM.ui.mpCat = t.dataset.mpCat; BM.render(); }
     else if ((t = e.target.closest('[data-mp-dyn]'))) { BM.ui.mpDyn = !BM.ui.mpDyn; BM.render(); if (BM.ui.mpDyn) { var el = document.getElementById('mp-dyn'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
     else if ((t = e.target.closest('[data-mp-dyngroup]'))) { BM.ui.mpDynGroup = t.dataset.mpDyngroup; BM.render(); }
     else if ((t = e.target.closest('[data-mp-dynmode]'))) { BM.ui.mpDynMode = t.dataset.mpDynmode; BM.render(); }
   });
-  document.addEventListener('change', function (e) { if (e.target.id === 'mp-week') { BM.ui.mpWeek = e.target.value; BM.render(); } });
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.id === 'mp-week') { BM.ui.mpWeek = t.value; BM.render(); return; }
+    if (t.dataset && t.dataset.mpDone != null) {
+      var done = doneMap(t.dataset.mpWeek);
+      if (t.checked) done[t.dataset.mpDone] = true; else delete done[t.dataset.mpDone];
+      BM.persist();
+      var li = t.closest('li'), all = document.querySelectorAll('[data-mp-done]'), k = document.querySelectorAll('[data-mp-done]:checked').length;
+      if (li) li.classList.toggle('done', t.checked);
+      var nEl = document.getElementById('mp-done-n'), bar = document.getElementById('mp-done-bar');
+      if (nEl) nEl.textContent = k + ' из ' + all.length;
+      if (bar) bar.style.width = (all.length ? k / all.length * 100 : 0).toFixed(0) + '%';
+    }
+  });
   BM.mpstatsRefresh = function () { loadIndex(true); var id = BM.ui.mpWeek; if (id) loadWeek(id).then(rerender); };
 })();
