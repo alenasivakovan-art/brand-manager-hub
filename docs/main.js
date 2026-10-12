@@ -13,6 +13,7 @@
     if (h[0] === 'system') return { name: 'system', id: h[1] || null, tab: h[2] || null };
     if (h[0] === 'cost') return { name: 'cost', id: h[1] || null };
     if (h[0] === 'insights') return { name: 'insights', id: h[1] || null, tab: h[2] || null };
+    if (h[0] === 'methods') return { name: 'methods', id: h[1] || null };
     if (h[0] === 'settings') return { name: 'settings' };
     return { name: 'home' };
   }
@@ -44,6 +45,7 @@
     else if (route.name === 'system') { html = V.system(route.id, route.tab); document.title = 'Система маркетинга · Бренд-менеджер'; }
     else if (route.name === 'cost') { html = V.cost(route.id); document.title = 'Себестоимость · Бренд-менеджер'; }
     else if (route.name === 'insights') { html = V.insights(route.id, route.tab); document.title = 'Тренды и рынок · Бренд-менеджер'; }
+    else if (route.name === 'methods') { html = V.methods(route.id); document.title = 'Методы анализа · Бренд-менеджер'; }
     else { html = V.home(); document.title = 'Бренд-менеджер'; }
 
     document.getElementById('sidebar').innerHTML = V.sidebar(route);
@@ -497,6 +499,7 @@
       { t: 'Все проекты', i: 'grid', run: function () { go('#/projects'); } },
       { t: 'Система маркетинга', i: 'network', run: function () { go('#/system'); } },
       { t: 'Тренды и рынок', i: 'radar', run: function () { go('#/insights'); } },
+      { t: 'Методы анализа: SWOT, конкуренты, ABC и другие', i: 'compass', run: function () { go('#/methods'); } },
       { t: 'Себестоимость и симуляции', i: 'calc', run: function () { go('#/cost'); } },
       { t: 'База знаний', i: 'book', run: function () { go('#/kb'); } },
       { t: 'Карта процессов', i: 'map', run: function () { go('#/kb/process'); } },

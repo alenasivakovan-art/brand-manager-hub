@@ -76,6 +76,7 @@
         navItem('#/', 'home', 'Главная', route.name === 'home') +
         navItem('#/projects', 'grid', 'Все проекты', route.name === 'projects' && !route.folder, s.projects.length) +
         navItem('#/insights', 'radar', 'Тренды и рынок', route.name === 'insights') +
+        navItem('#/methods', 'compass', 'Методы анализа', route.name === 'methods') +
         navItem('#/system', 'network', 'Система маркетинга', route.name === 'system') +
         navItem('#/cost', 'calc', 'Себестоимость', route.name === 'cost') +
         navItem('#/kb', 'book', 'База знаний', route.name === 'kb') +
